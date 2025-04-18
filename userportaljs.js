@@ -106,22 +106,25 @@ document.addEventListener('DOMContentLoaded', function () {
                         // Small delay for natural conversation flow
                         setTimeout(() => {
                             // Second message - Context and guidance
-                            addMessage(`To ensure we capture all the necessary details and get this resolved efficiently, could you please fill out the form below? This will help me:
-                            • Create an official record of your grievance
-                            • Connect you with the right department officials
-                            • Keep you updated on the progress`);
+                            addMessage(`To ensure we capture all the necessary details and get this resolved efficiently, could you please fill out the form below?`);
                             
-                            // Show the form with a smooth transition
-                            document.getElementById('complaint-form').style.display = 'block';
-                            document.getElementById('complaint-form').classList.add('fade-in');
+                            // Show form with smooth animation
+                            const complaintForm = document.getElementById('complaint-form');
+                            complaintForm.style.display = 'block';
+                            
+                            // Use requestAnimationFrame to ensure display block is processed
+                            requestAnimationFrame(() => {
+                                complaintForm.classList.add('show');
+                            });
+                            
                             document.getElementById('complaint').value = message;
                             
-                            // Scroll to form smoothly
-                            document.getElementById('complaint-form').scrollIntoView({ 
+                            // Smooth scroll to form
+                            complaintForm.scrollIntoView({ 
                                 behavior: 'smooth',
-                                block: 'start'
+                                block: 'start' 
                             });
-                        }, 1000);
+                        }, 800);
                     } else if (result.type === 'followup') {
                         addMessage(result.reply);
                     }
