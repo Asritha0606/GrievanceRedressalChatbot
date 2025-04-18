@@ -317,48 +317,74 @@ function setupFilters() {
     const departmentFilter = document.getElementById('filter-department');
     const statusFilter = document.getElementById('filter-status');
     const searchInput = document.getElementById('search-ticket');
+    const searchBtn = document.getElementById('search-btn');
 
+    // Department filter change event
     if (departmentFilter) {
         departmentFilter.addEventListener('change', () => {
             filterComplaints();
         });
     }
 
+    // Status filter change event
     if (statusFilter) {
         statusFilter.addEventListener('change', () => {
             filterComplaints();
         });
     }
 
+    // Search input keydown event
     if (searchInput) {
-        // Debounce search input
-        let timeout = null;
-        searchInput.addEventListener('input', () => {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
                 filterComplaints();
-            }, 300);
+            }
+        });
+    }
+
+    // Search button click event
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            filterComplaints();
         });
     }
 }
 
 async function filterComplaints() {
-    const department = document.getElementById('filter-department').value;
-    const status = document.getElementById('filter-status').value;
-    const search = document.getElementById('search-ticket').value.trim();
+    const department = document.getElementById('filter-department')?.value || '';
+    const status = document.getElementById('filter-status')?.value || '';
+    const search = document.getElementById('search-ticket')?.value.trim() || '';
 
     try {
-        const response = await fetch(`http://localhost:5000/api/admin/complaints?department=${department}&status=${status}&search=${search}`, {
+        // Show loading state
+        const searchBtn = document.getElementById('search-btn');
+        if (searchBtn) {
+            searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            searchBtn.disabled = true;
+        }
+
+        const response = await fetch(`http://localhost:5000/api/admin/complaints?department=${encodeURIComponent(department)}&status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}`, {
             credentials: 'include'
         });
+
         const data = await response.json();
 
         if (data.success) {
             displayComplaints(data.complaints);
+        } else {
+            showNotification('Error filtering complaints', 'error');
         }
     } catch (error) {
         console.error('Error filtering complaints:', error);
         showNotification('Error filtering complaints', 'error');
+    } finally {
+        // Reset search button state
+        const searchBtn = document.getElementById('search-btn');
+        if (searchBtn) {
+            searchBtn.innerHTML = '<i class="fas fa-search"></i>';
+            searchBtn.disabled = false;
+        }
     }
 }
 

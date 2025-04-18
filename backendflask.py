@@ -232,7 +232,7 @@ def verify_image_relevance(image_data, complaint_text):
             similarity = (100.0 * image_features @ text_features.T).item()
         
         # Increased threshold to 25.0 (0.25)
-        return similarity > 25.0, similarity
+        return similarity > 5.0, similarity
     except Exception as e:
         print(f"Error in image verification: {str(e)}")
         return False, 0.0
@@ -287,64 +287,53 @@ def submit_complaint():
         email = data.get('email')
         phone = data.get('phone')
         description = data.get('complaint')
-        address = data.get('address')  # Get address from request
-        image_data = data.get('image')  # Base64-encoded image data
+        form_address = data.get('address')  # Store form address separately
+        image_data = data.get('image')
 
-        # Generate a unique ticket number
+        # Generate ticket number
         ticket_number = f"TKT-{uuid.uuid4().hex[:8].upper()}"
 
-        # Connect to the database
+        # Connect to database
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
 
-        # Check if the user exists
+        # Check if user exists and handle user creation
         cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
         user = cursor.fetchone()
-
+        
         if not user:
-            # Create a new user if they don't exist
             cursor.execute("""
                 INSERT INTO users (name, email, phone)
                 VALUES (%s, %s, %s)
             """, (name, email, phone))
-            user_id = cursor.lastrowid  # Get the newly created user's ID
+            user_id = cursor.lastrowid
         else:
-            user_id = user[0]  # Use the existing user's ID
+            user_id = user[0]
 
-        # Classify complaint to get department
+        # Get department classification
         department_name = classify_complaint(description)
-        
         if department_name == "out_of_scope":
             return jsonify({
                 "success": False,
-                "message": "We apologize, but this complaint appears to be outside our scope of services. Please ensure your complaint is related to government services and infrastructure."
+                "message": "We apologize, but this complaint appears to be outside our scope of services."
             }), 400
 
+        # Get department ID
         cursor.execute("SELECT id FROM departments WHERE name = %s", (department_name,))
         department = cursor.fetchone()
+        department_id = department[0] if department else 1  # Default to Administration
 
-        if not department:
-            # If department not found, assign to default department (Administration)
-            cursor.execute("SELECT id FROM departments WHERE name = 'Administration'")
-            department = cursor.fetchone()
-
-        department_id = department[0]
-
-        # Skip GPS extraction if no image
+        # Handle address and location data
+        final_address = form_address  # Default to form address
         if image_data:
             location_data = extract_location_from_image(image_data)
-            if location_data.__contains__('error'):
-                return jsonify({
-                    "success": False,
-                    "message": "Upload original image taken from camera"
-                }), 400
-        else:
-            location_data = None  # No location data if no image
-        
-        # Handle image upload if present
+            if not location_data.get('error') and location_data.get('address'):
+                # If GPS data is successfully extracted, use it instead of form address
+                final_address = location_data['address']
+
+        # Handle image upload and verification
         image_path = None
         if image_data:
-            # Verify image relevance using CLIP
             is_relevant, similarity_score = verify_image_relevance(image_data, description)
             if not is_relevant:
                 return jsonify({
@@ -352,7 +341,6 @@ def submit_complaint():
                     "message": f"Irrelevant image attached. Similarity score: {similarity_score:.2f}. Complaint rejected."
                 }), 400
 
-            # Save the image if relevant
             try:
                 image_bytes = base64.b64decode(image_data.split(',')[1])
                 os.makedirs("uploads", exist_ok=True)
@@ -363,11 +351,11 @@ def submit_complaint():
                 print("Image Processing Error:", str(e))
                 image_path = None
 
-        # Insert the complaint into the database
+        # Insert complaint with final address
         cursor.execute("""
             INSERT INTO complaints (ticket_number, user_id, department_id, description, address, image_path)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (ticket_number, user_id, department_id, description, address, image_path))
+        """, (ticket_number, user_id, department_id, description, final_address, image_path))
 
         conn.commit()
         cursor.close()
@@ -377,8 +365,9 @@ def submit_complaint():
             "success": True,
             "message": "Complaint submitted successfully.",
             "ticket_number": ticket_number,
-            "department": department_name
-        }) , 200
+            "department": department_name,
+            "address_source": "GPS" if final_address != form_address else "Form"
+        }), 200
 
     except Exception as e:
         print("Error:", str(e))
@@ -476,6 +465,7 @@ def get_all_complaints():
     
     department = request.args.get('department')
     status = request.args.get('status')
+    search = request.args.get('search')
     
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor(dictionary=True)
@@ -498,6 +488,11 @@ def get_all_complaints():
     if status:
         query += " AND c.status = %s"
         params.append(status)
+    
+    if search:
+        query += " AND (c.ticket_number LIKE %s OR u.name LIKE %s OR c.description LIKE %s)"
+        search_pattern = f"%{search}%"
+        params.extend([search_pattern, search_pattern, search_pattern])
     
     query += " ORDER BY c.created_at DESC"
     
