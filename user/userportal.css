@@ -296,7 +296,7 @@ header p {
 
 .complaint-form {
     animation: none;
-    opacity: 0;
+    /* opacity: 0; */
     transform: translateY(20px);
     transition: opacity 0.3s ease, transform 0.3s ease;
 }
@@ -325,7 +325,6 @@ header p {
 
 .form-group {
     margin-bottom: 20px;
-    opacity: 0;
     transform: translateY(15px);
     transition: all 0.3s ease;
 }
@@ -471,6 +470,16 @@ header p {
     border-radius: 15px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
     margin-bottom: 30px;
+}
+#user-input{
+    border: 2px solid rgba(64, 112, 244, 0.1);
+    border-radius: 12px;
+    padding: 8px;
+    font-size: 1rem;
+    width: 100%;
+}
+#user-input:focus{
+    border: 2px solid blue;
 }
 
 .track-container input {

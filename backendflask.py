@@ -14,6 +14,78 @@ import torch
 from transformers import CLIPProcessor, CLIPModel
 import traceback
 import google.generativeai as genai
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
+from geopy.geocoders import Nominatim
+
+def extract_location_from_image(image_data):
+    def extract_gps_data(image):
+        exif_data = image._getexif()
+        if not exif_data:
+            return None, None
+
+        gps_info = {}
+        for tag_id, value in exif_data.items():
+            tag = TAGS.get(tag_id, tag_id)
+            if tag == "GPSInfo":
+                for key in value:
+                    sub_tag = GPSTAGS.get(key, key)
+                    gps_info[sub_tag] = value[key]
+
+        if 'GPSLatitude' in gps_info and 'GPSLongitude' in gps_info:
+            lat = convert_to_decimal(gps_info['GPSLatitude'], gps_info.get('GPSLatitudeRef'))
+            lon = convert_to_decimal(gps_info['GPSLongitude'], gps_info.get('GPSLongitudeRef'))
+            return lat, lon
+        return None, None
+
+    def convert_to_decimal(dms, ref):
+        def to_float(val):
+            try:
+                return val[0] / val[1]  # Tuple form
+            except TypeError:
+                return float(val)  # IFDRational form
+
+        degrees = to_float(dms[0])
+        minutes = to_float(dms[1])
+        seconds = to_float(dms[2])
+
+        decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+
+        if ref in ['S', 'W']:
+            decimal = -decimal
+        return decimal
+
+    def reverse_geocode(lat, lon):
+        geolocator = Nominatim(user_agent="geoapi")
+        location = geolocator.reverse((lat, lon), exactly_one=True, timeout=10)
+        return location.address if location else "Address not found."
+
+    try:
+        if not image_data:
+            raise ValueError("No image data provided")
+
+        # Decode base64 image
+        image_bytes = base64.b64decode(image_data.split(',')[1])
+        img = Image.open(io.BytesIO(image_bytes))
+        latitude, longitude = extract_gps_data(img)
+
+        if latitude is not None and longitude is not None:
+            address = reverse_geocode(latitude, longitude)
+            return {
+                'latitude': latitude,
+                'longitude': longitude,
+                'address': address
+            }
+        else:
+            return {
+                'error': 'GPS data not found in image.'
+            }
+
+    except Exception as e:
+        return {'error': str(e)}
+
+# === Example usage ===
+# result = get_image_location(r"C:\Users\asrit\OneDrive\Desktop\GPS Images\test.jpg")
 
 
 app = Flask(__name__)
@@ -133,41 +205,13 @@ def init_db():
 # Initialize database on startup
 init_db()
 
-def classify_complaint(complaint_text):
-    model = genai.GenerativeModel("gemini-2.0-flash")
-
-    analysis_prompt = f"""As an AI complaint classifier, analyze this message and determine if it's a valid complaint:
-
-    Message: {complaint_text}
-
-    First determine if this is a valid complaint about government services/infrastructure.
-    If it's not a clear complaint, respond with "casual".
-    If it is a complaint, classify it into one of these departments:
-    Administration, Civil, Education, Electrical, Finance, Health & Sanitation,
-    HR, IT, Maintenance, Public Safety, Road & Transport, Security, Waste Management, Water
-
-    Consider:
-    1. Is this a specific issue or just casual conversation?
-    2. Does it mention any concrete problems?
-    3. Is there enough context to classify it?
-    4. Which department would be most appropriate to handle this issue?
-
-    Respond with ONLY ONE WORD: either "casual" or the department name."""
-
-    response = model.generate_content(analysis_prompt)
-    classified_dept = response.text.strip()
-
-    # If classification is unclear or too vague, return casual
-    if classified_dept.lower() == "casual" or not classified_dept:
-        return "casual"
-    return classified_dept
 
 # Helper function to verify image relevance using CLIP
 def verify_image_relevance(image_data, complaint_text):
     try:
         if not image_data:
-            raise ValueError("No image data provided")
-
+            return True, 1.0  # Return success if no image provided
+            
         # Decode base64 image
         image_bytes = base64.b64decode(image_data.split(',')[1])
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -184,14 +228,56 @@ def verify_image_relevance(image_data, complaint_text):
             image_features /= image_features.norm(dim=-1, keepdim=True)
             text_features /= text_features.norm(dim=-1, keepdim=True)
             
-            # Calculate similarity score
+            # Calculate similarity score with increased threshold
             similarity = (100.0 * image_features @ text_features.T).item()
         
-        # Check if similarity score exceeds threshold
-        return similarity > 25.0, similarity  # Threshold can be adjusted
+        # Increased threshold to 25.0 (0.25)
+        return similarity > 25.0, similarity
     except Exception as e:
         print(f"Error in image verification: {str(e)}")
         return False, 0.0
+
+def classify_complaint(complaint_text):
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    analysis_prompt = f"""As an AI complaint classifier, analyze this message and determine if it's a valid government service complaint:
+
+    Message: {complaint_text}
+
+    First determine if this is a valid complaint about government services/infrastructure with a confidence threshold of 0.7.
+    If not confident or not a clear government service complaint, respond with "out_of_scope".
+    
+    If it is a valid complaint, classify it into one of these departments:
+    Administration, Civil, Education, Electrical, Finance, Health & Sanitation,
+    HR, IT, Maintenance, Public Safety, Road & Transport, Security, Waste Management, Water
+
+    Consider:
+    1. Is this specifically about government/public services?
+    2. Does it mention concrete infrastructure/service problems?
+    3. Is there enough context to confidently classify it?
+    4. Which department would be most appropriate to handle this issue?
+
+    Respond with ONLY ONE WORD: either "out_of_scope" or the department name."""
+
+    response = model.generate_content(analysis_prompt)
+    classified_dept = response.text.strip()
+
+    # If classification is unclear or out of scope
+    if classified_dept.lower() == "out_of_scope" or not classified_dept:
+        return "out_of_scope"
+
+    # Check if classified department exists in database
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM departments WHERE name = %s", (classified_dept,))
+    dept = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not dept:
+        return "out_of_scope"
+
+    return classified_dept
 
 @app.route('/api/submit_complaint', methods=['POST'])
 def submit_complaint():
@@ -227,6 +313,13 @@ def submit_complaint():
 
         # Classify complaint to get department
         department_name = classify_complaint(description)
+        
+        if department_name == "out_of_scope":
+            return jsonify({
+                "success": False,
+                "message": "We apologize, but this complaint appears to be outside our scope of services. Please ensure your complaint is related to government services and infrastructure."
+            }), 400
+
         cursor.execute("SELECT id FROM departments WHERE name = %s", (department_name,))
         department = cursor.fetchone()
 
@@ -237,6 +330,17 @@ def submit_complaint():
 
         department_id = department[0]
 
+        # Skip GPS extraction if no image
+        if image_data:
+            location_data = extract_location_from_image(image_data)
+            if location_data.__contains__('error'):
+                return jsonify({
+                    "success": False,
+                    "message": "Upload original image taken from camera"
+                }), 400
+        else:
+            location_data = None  # No location data if no image
+        
         # Handle image upload if present
         image_path = None
         if image_data:
@@ -274,7 +378,7 @@ def submit_complaint():
             "message": "Complaint submitted successfully.",
             "ticket_number": ticket_number,
             "department": department_name
-        })
+        }) , 200
 
     except Exception as e:
         print("Error:", str(e))
@@ -528,58 +632,61 @@ def chat_with_llm():
         user_message = data.get('message')
 
         if not user_message:
-            return jsonify({"success": False, "message": "Message is required"}), 400
+            return jsonify({
+                "success": False,
+                "message": "Message is required"
+            }), 400
 
-        # Use Gemini to analyze the message and generate response
         model = genai.GenerativeModel("gemini-2.0-flash")
         
-        analysis_prompt = f"""You are GrieveBuddy, a friendly and helpful government grievance chatbot assistant. 
-        Analyze the following user message and respond naturally while maintaining professionalism:
-        User message: {user_message}
-
-        If the message is:
-        - A greeting: Respond warmly and ask how you can help with their grievance
-        - A thank you: Acknowledge graciously and offer further assistance
-        - A follow-up question: Provide helpful guidance about the grievance process
-        - A complaint: Identify the relevant department and guide them to submit formally
-        - Casual chat: Politely redirect to grievance-related topics
-
-        Available departments for complaints:
-        Administration, Civil, Education, Electrical, Finance, Health & Sanitation, 
-        HR, IT, Maintenance, Public Safety, Road & Transport, Security, Waste Management, Water
-
-        Remember to:
-        1. Keep responses conversational but professional
-        2. Show empathy for grievances
-        3. Guide users toward formal complaint submission
-        4. Maintain context in follow-up responses
-
-        Respond in this exact JSON format (no additional text):
-        {{"type": "greeting|thanks|followup|complaint|casual", "reply": "your response here", "department": "department_name"}}"""
+        # Simplified prompt for better response handling
+        analysis_prompt = f"""You are GrieveBuddy, a friendly and helpful government grievance chatbot assistant.
+        Analyze this user message: "{user_message}"
+        
+        If this appears to be a complaint about government services, respond with:
+        {{
+            "type": "complaint",
+            "department": "[appropriate department]",
+            "reply": "[your response asking for more details]"
+        }}
+        
+        For general queries or chat, respond with:
+        {{
+            "type": "casual",
+            "reply": "[your helpful response]"
+        }}
+        
+        Ensure your response is always in valid JSON format."""
 
         response = model.generate_content(analysis_prompt)
         
         try:
             # Clean the response text
-            clean_response = response.text.strip().replace('\n', '').replace('```json', '').replace('```', '')
-            result = json.loads(clean_response)
+            clean_response = response.text.strip()
+            if clean_response.startswith('```json'):
+                clean_response = clean_response[7:-3]  # Remove ```json and ``` markers
+            elif clean_response.startswith('```'):
+                clean_response = clean_response[3:-3]  # Remove ``` markers
             
-            if result["type"] == "complaint":
+            # Try to parse as JSON
+            try:
+                result = json.loads(clean_response)
                 return jsonify({
                     "success": True,
-                    "type": "complaint",
-                    "department": result.get("department", "Administration"),
-                    "message": result["reply"]
+                    "type": result.get("type", "casual"),
+                    "department": result.get("department", ""),
+                    "reply": result.get("reply", "I apologize, but I'm having trouble understanding. Could you please rephrase that?")
                 })
-            else:
+            except json.JSONDecodeError:
+                # If JSON parsing fails, treat the response as plain text
                 return jsonify({
                     "success": True,
-                    "type": result["type"],
-                    "reply": result["reply"]
+                    "type": "casual",
+                    "reply": clean_response
                 })
                 
-        except json.JSONDecodeError as e:
-            print("JSON Parse Error:", e)
+        except Exception as e:
+            print("Response Processing Error:", e)
             return jsonify({
                 "success": True,
                 "type": "casual",
@@ -591,7 +698,7 @@ def chat_with_llm():
         traceback.print_exc()
         return jsonify({
             "success": False,
-            "message": "An error occurred while processing your message"
+            "reply": "An error occurred while processing your message"
         }), 500
 
 @app.route('/api/admin/reports', methods=['GET'])

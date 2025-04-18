@@ -29,11 +29,11 @@ document.addEventListener('DOMContentLoaded', function () {
         messageDiv.classList.add('message', isUser ? 'user' : 'bot');
         
         if (!isUser) {
-            // Add bot logo
+            // Add bot logo for bot messages
             const logoDiv = document.createElement('div');
             logoDiv.classList.add('bot-logo');
             const icon = document.createElement('i');
-            icon.classList.add('fas', 'fa-robot'); // Using robot icon from Font Awesome
+            icon.classList.add('fas', 'fa-robot');
             logoDiv.appendChild(icon);
             messageDiv.appendChild(logoDiv);
         }
@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }, 100);
         }
         
+        const chatMessages = document.getElementById('chat-messages');
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return messageDiv;
@@ -57,90 +58,80 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function handleUserInput() {
         const message = userInput.value.trim();
-        if (message) {
-            // Add user message to chat immediately
-            addMessage(message, true); // true indicates it's a user message
-            
-            // Disable input and button while processing
-            userInput.disabled = true;
-            sendBtn.disabled = true;
-            
-            // Add loading indicator
-            const loadingMessage = addMessage("Typing...", false);
-            loadingMessage.classList.add('bot-typing');
-            
-            try {
-                // Clear input field after storing the message
-                userInput.value = '';
-                
-                // Send the user's message to the backend
-                const response = await fetch('http://127.0.0.1:5000/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        message,
-                        isFollowUp: message.toLowerCase().includes('thank') || 
-                                   message.toLowerCase().includes('what about') ||
-                                   message.toLowerCase().includes('how about') ||
-                                   message.toLowerCase().includes('and') ||
-                                   message.toLowerCase().startsWith('what if') ||
-                                   message.toLowerCase().startsWith('can you')
-                    }),
-                });
+        if (!message) return;
 
-                const result = await response.json();
+        // Hide complaint form if visible
+        const complaintForm = document.getElementById('complaint-form');
+        if (complaintForm.style.display === 'block') {
+            complaintForm.style.display = 'none';
+            complaintForm.classList.remove('show');
+        }
 
-                // Remove loading message
-                loadingMessage.remove();
+        // Add user message to chat
+        addMessage(message, true);
+        
+        // Disable input and button while processing
+        userInput.disabled = true;
+        sendBtn.disabled = true;
+        
+        // Add loading indicator
+        const loadingMessage = addMessage("Typing...", false);
+        loadingMessage.classList.add('bot-typing');
+        
+        try {
+            // Clear input field
+            userInput.value = '';
+            
+            const response = await fetch('http://127.0.0.1:5000/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message })
+            });
 
-                if (result.success) {
-                    if (result.type === 'greeting' || result.type === 'thanks') {
-                        const messageDiv = addMessage(result.reply);
-                        messageDiv.classList.add('friendly-response');
-                    } else if (result.type === 'complaint') {
-                        // First message - Empathetic acknowledgment
-                        addMessage(`I understand your concern regarding the ${result.department} department issue. It's important that we address this properly.`);
+            const result = await response.json();
+
+            // Remove loading message
+            loadingMessage.remove();
+
+            if (result.success) {
+                // Always show the bot's reply first
+                addMessage(result.reply);
+
+                if (result.type === 'complaint') {
+                    // Add a small delay before showing follow-up messages
+                    setTimeout(() => {
+                        addMessage(`To ensure we capture all the necessary details and get this resolved efficiently, could you please fill out the form below?`);
                         
-                        // Small delay for natural conversation flow
-                        setTimeout(() => {
-                            // Second message - Context and guidance
-                            addMessage(`To ensure we capture all the necessary details and get this resolved efficiently, could you please fill out the form below?`);
-                            
-                            // Show form with smooth animation
-                            const complaintForm = document.getElementById('complaint-form');
-                            complaintForm.style.display = 'block';
-                            
-                            // Use requestAnimationFrame to ensure display block is processed
-                            requestAnimationFrame(() => {
-                                complaintForm.classList.add('show');
-                            });
-                            
-                            document.getElementById('complaint').value = message;
-                            
-                            // Smooth scroll to form
-                            complaintForm.scrollIntoView({ 
-                                behavior: 'smooth',
-                                block: 'start' 
-                            });
-                        }, 800);
-                    } else if (result.type === 'followup') {
-                        addMessage(result.reply);
-                    }
-                } else {
-                    addMessage("I apologize, but I couldn't process your request. Could you please rephrase that?");
+                        // Show form with smooth animation
+                        complaintForm.style.display = 'block';
+                        requestAnimationFrame(() => {
+                            complaintForm.classList.add('show');
+                        });
+                        
+                        // Pre-fill complaint field
+                        document.getElementById('complaint').value = message;
+                        
+                        // Smooth scroll to form
+                        complaintForm.scrollIntoView({ 
+                            behavior: 'smooth',
+                            block: 'start' 
+                        });
+                    }, 800);
                 }
-            } catch (error) {
-                console.error('Error:', error);
-                loadingMessage.remove();
-                addMessage("I apologize for the inconvenience. There seems to be a connection issue. Please try again.");
-            } finally {
-                // Re-enable input and button
-                userInput.disabled = false;
-                sendBtn.disabled = false;
-                userInput.focus();
+            } else {
+                addMessage("I apologize, but I couldn't process your request. Could you please rephrase that?");
             }
+        } catch (error) {
+            console.error('Error:', error);
+            loadingMessage.remove();
+            addMessage("I apologize for the inconvenience. There seems to be a connection issue. Please try again.");
+        } finally {
+            // Re-enable input and button
+            userInput.disabled = false;
+            sendBtn.disabled = false;
+            userInput.focus();
         }
     }
 
@@ -183,6 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const complaint = document.getElementById('complaint').value.trim();
         const address = document.getElementById('address').value.trim();
 
+        // Remove image from required fields check
         if (!name || !email || !complaint || !address) {
             alert('Please fill all required fields');
             return;
@@ -196,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 reader.readAsDataURL(imageUpload.files[0]);
             });
         }
-
+        // Image is now optional, so we continue with or without it
         const data = { name, email, phone, complaint, address, image: imageData };
 
         try {
@@ -207,6 +199,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             const result = await response.json();
+            console.log(result) 
 
             if (result.success) {
                 // Update the ticket number and department in the UI
