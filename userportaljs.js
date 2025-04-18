@@ -23,53 +23,120 @@ document.addEventListener('DOMContentLoaded', function () {
     const sendBtn = document.getElementById('send-btn');
     const complaintForm = document.getElementById('complaint-form');
 
+    // Enhanced addMessage function with bot logo support
     function addMessage(message, isUser = false) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', isUser ? 'user' : 'bot');
-        messageDiv.textContent = message;
+        
+        if (!isUser) {
+            // Add bot logo
+            const logoDiv = document.createElement('div');
+            logoDiv.classList.add('bot-logo');
+            const icon = document.createElement('i');
+            icon.classList.add('fas', 'fa-robot'); // Using robot icon from Font Awesome
+            logoDiv.appendChild(icon);
+            messageDiv.appendChild(logoDiv);
+        }
+        
+        const textDiv = document.createElement('div');
+        textDiv.textContent = message;
+        messageDiv.appendChild(textDiv);
+        
+        // Add typing animation for bot messages
+        if (!isUser) {
+            messageDiv.style.opacity = '0';
+            setTimeout(() => {
+                messageDiv.style.opacity = '1';
+            }, 100);
+        }
+        
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+        return messageDiv;
     }
 
     async function handleUserInput() {
         const message = userInput.value.trim();
         if (message) {
-            // Hide the previous submission result when user starts typing
-            document.getElementById('submission-result').style.display = 'none';
+            // Add user message to chat immediately
+            addMessage(message, true); // true indicates it's a user message
             
-            addMessage(message, true); // Add user message to chat
-            userInput.value = '';
-
+            // Disable input and button while processing
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            
+            // Add loading indicator
+            const loadingMessage = addMessage("Typing...", false);
+            loadingMessage.classList.add('bot-typing');
+            
             try {
+                // Clear input field after storing the message
+                userInput.value = '';
+                
                 // Send the user's message to the backend
                 const response = await fetch('http://127.0.0.1:5000/api/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message }),
+                    body: JSON.stringify({ 
+                        message,
+                        isFollowUp: message.toLowerCase().includes('thank') || 
+                                   message.toLowerCase().includes('what about') ||
+                                   message.toLowerCase().includes('how about') ||
+                                   message.toLowerCase().includes('and') ||
+                                   message.toLowerCase().startsWith('what if') ||
+                                   message.toLowerCase().startsWith('can you')
+                    }),
                 });
 
                 const result = await response.json();
 
+                // Remove loading message
+                loadingMessage.remove();
+
                 if (result.success) {
-                    if (result.type === 'greeting') {
-                        addMessage(result.reply);
+                    if (result.type === 'greeting' || result.type === 'thanks') {
+                        const messageDiv = addMessage(result.reply);
+                        messageDiv.classList.add('friendly-response');
                     } else if (result.type === 'complaint') {
-                        addMessage(result.reply);
-                        document.getElementById('complaint-form').style.display = 'block';
-                        document.getElementById('complaint').value = message;
-                    } else if (result.type === 'rejected') {
-                        addMessage(result.reply);
-                    } else if (result.type === 'irrelevant') {
+                        // First message - Empathetic acknowledgment
+                        addMessage(`I understand your concern regarding the ${result.department} department issue. It's important that we address this properly.`);
+                        
+                        // Small delay for natural conversation flow
+                        setTimeout(() => {
+                            // Second message - Context and guidance
+                            addMessage(`To ensure we capture all the necessary details and get this resolved efficiently, could you please fill out the form below? This will help me:
+                            • Create an official record of your grievance
+                            • Connect you with the right department officials
+                            • Keep you updated on the progress`);
+                            
+                            // Show the form with a smooth transition
+                            document.getElementById('complaint-form').style.display = 'block';
+                            document.getElementById('complaint-form').classList.add('fade-in');
+                            document.getElementById('complaint').value = message;
+                            
+                            // Scroll to form smoothly
+                            document.getElementById('complaint-form').scrollIntoView({ 
+                                behavior: 'smooth',
+                                block: 'start'
+                            });
+                        }, 1000);
+                    } else if (result.type === 'followup') {
                         addMessage(result.reply);
                     }
                 } else {
-                    addMessage("Sorry, I couldn't process your request. Please try again.");
+                    addMessage("I apologize, but I couldn't process your request. Could you please rephrase that?");
                 }
             } catch (error) {
                 console.error('Error:', error);
-                addMessage("An error occurred while communicating with the server.");
+                loadingMessage.remove();
+                addMessage("I apologize for the inconvenience. There seems to be a connection issue. Please try again.");
+            } finally {
+                // Re-enable input and button
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
             }
         }
     }
@@ -93,23 +160,8 @@ document.addEventListener('DOMContentLoaded', function () {
             reader.onload = function (e) {
                 const img = document.createElement('img');
                 img.src = e.target.result;
-
-                // Check for GPS metadata
-                EXIF.getData(img, function () {
-                    const gpsLatitude = EXIF.getTag(this, 'GPSLatitude');
-                    const gpsLongitude = EXIF.getTag(this, 'GPSLongitude');
-
-                    if (!gpsLatitude || !gpsLongitude) {
-                        alert('Please upload a photo taken with a GPS-enabled camera.');
-                        imageUpload.value = ''; // Clear the file input
-                        imagePreview.innerHTML = ''; // Clear the preview
-                        return;
-                    }
-
-                    // If GPS metadata is present, show the preview
-                    imagePreview.innerHTML = '';
-                    imagePreview.appendChild(img);
-                });
+                imagePreview.innerHTML = '';
+                imagePreview.appendChild(img);
             };
             reader.readAsDataURL(file);
         }
@@ -121,8 +173,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const ticketNumberElem = document.getElementById('ticket-number');
     const assignedDeptElem = document.getElementById('assigned-department');
 
-    submitBtn.addEventListener('click', async (event) => {
-        event.preventDefault();
+    async function submitComplaint() {
         const name = document.getElementById('name').value.trim();
         const email = document.getElementById('email').value.trim();
         const phone = document.getElementById('phone').value.trim();
@@ -130,12 +181,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const address = document.getElementById('address').value.trim();
 
         if (!name || !email || !complaint || !address) {
-            alert('Please fill all required fields, including the address.');
-            return;
-        }
-
-        if (!isValidEmail(email)) {
-            alert('Please enter a valid email address');
+            alert('Please fill all required fields');
             return;
         }
 
@@ -148,49 +194,44 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        const data = {
-            user_id: sessionStorage.getItem('user_id'), // Retrieve user_id from session storage
-            name,
-            email,
-            phone,
-            complaint,
-            address,
-            image: imageData
-        };
-
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Submitting...';
+        const data = { name, email, phone, complaint, address, image: imageData };
 
         try {
             const response = await fetch("http://127.0.0.1:5000/api/submit_complaint", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                mode: "cors",
                 body: JSON.stringify(data)
             });
 
             const result = await response.json();
 
             if (result.success) {
-                console.log("success")
-                ticketNumberElem.textContent = result.ticket_number;
-                assignedDeptElem.textContent = result.department;
-
-                complaintForm.style.display = 'none';
-                submissionResult.style.display = 'block';
-
+                // Update the ticket number and department in the UI
+                document.getElementById('ticket-number').textContent = result.ticket_number;
+                document.getElementById('assigned-department').textContent = result.department;
+                
+                // Hide the complaint form and show the success message
+                document.getElementById('complaint-form').style.display = 'none';
+                document.getElementById('submission-result').style.display = 'block';
+                
+                // Clear the form but keep the submission result visible
+                document.getElementById('name').value = '';
+                document.getElementById('email').value = '';
+                document.getElementById('phone').value = '';
+                document.getElementById('complaint').value = '';
+                document.getElementById('address').value = '';
+                imageUpload.value = '';
+                imagePreview.innerHTML = '';
             } else {
                 alert(result.message || 'Failed to submit complaint');
             }
         } catch (error) {
             console.error('Error submitting complaint:', error);
-            alert('An error occurred while submitting your complaint');
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit Complaint';
+            alert('An error occurred while submitting the complaint.');
         }
-    });
+    }
+
+    submitBtn.addEventListener('click', submitComplaint);
 
     document.getElementById('new-complaint').addEventListener('click', () => {
         // Hide the submission result
@@ -201,22 +242,23 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('email').value = '';
         document.getElementById('phone').value = '';
         document.getElementById('complaint').value = '';
+        document.getElementById('address').value = '';
         imageUpload.value = '';
         imagePreview.innerHTML = '';
         
         // Show the chat interface
         document.getElementById('complaint-form').style.display = 'none';
         
-        // Reset the chat with a message that preserves the previous ticket info
+        // Reset the chat with an informative message
         const chatMessages = document.getElementById('chat-messages');
         const previousTicket = document.getElementById('ticket-number').textContent;
         const previousDepartment = document.getElementById('assigned-department').textContent;
         
         chatMessages.innerHTML = `
             <div class="message bot">
-                Your previous complaint (Ticket: ${previousTicket}, Department: ${previousDepartment}) has been submitted successfully.
+                Great! Your previous grievance (Ticket: ${previousTicket}) has been successfully submitted and classified under ${previousDepartment} department. We'll keep you updated on its progress.
                 <br><br>
-                How can I help you with your next grievance?
+                How else can I assist you today? Feel free to share any other grievance you have, and I'll help direct it to the appropriate department.
             </div>
         `;
         
@@ -250,37 +292,79 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const result = await response.json();
 
-            if (result.success) {
+            if (result.success && result.complaint) {
                 trackError.style.display = 'none';
 
                 const complaint = result.complaint;
-                document.getElementById('detail-ticket').textContent = complaint.ticket_number;
-                document.getElementById('detail-department').textContent = complaint.department;
-                document.getElementById('detail-description').textContent = complaint.description;
+                const elements = {
+                    'detail-ticket': complaint.ticket_number,
+                    'detail-department': complaint.department,
+                    'detail-description': complaint.description,
+                    'detail-address': complaint.address,
+                    'detail-status': complaint.status
+                };
 
+                // Update all elements safely
+                Object.entries(elements).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = value || 'N/A';
+                    }
+                });
+
+                // Update status element with class
+                const statusElem = document.getElementById('detail-status');
+                if (statusElem) {
+                    statusElem.className = `detail-value status ${(complaint.status || '').replace(' ', '')}`;
+                }
+
+                // Update dates
                 const createdDate = new Date(complaint.created_at);
                 const updatedDate = new Date(complaint.updated_at);
-                document.getElementById('detail-date').textContent = formatDate(createdDate);
-                document.getElementById('detail-updated').textContent = formatDate(updatedDate);
+                const dateElements = {
+                    'detail-date': createdDate,
+                    'detail-updated': updatedDate
+                };
 
-                const statusElem = document.getElementById('detail-status');
-                statusElem.textContent = complaint.status;
-                statusElem.className = `detail-value status ${complaint.status.replace(' ', '')}`;
+                Object.entries(dateElements).forEach(([id, date]) => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = formatDate(date);
+                    }
+                });
 
-                complaintDetails.style.display = 'block';
+                if (complaintDetails) {
+                    complaintDetails.style.display = 'block';
+                }
             } else {
-                document.getElementById('error-message').textContent = result.message;
-                trackError.style.display = 'block';
-                complaintDetails.style.display = 'none';
+                const errorMessage = document.getElementById('error-message');
+                if (errorMessage) {
+                    errorMessage.textContent = result.message || 'Ticket not found';
+                }
+                if (trackError) {
+                    trackError.style.display = 'block';
+                }
+                if (complaintDetails) {
+                    complaintDetails.style.display = 'none';
+                }
             }
         } catch (error) {
             console.error('Error tracking complaint:', error);
-            document.getElementById('error-message').textContent = 'An error occurred while tracking your complaint';
-            trackError.style.display = 'block';
-            complaintDetails.style.display = 'none';
+            const errorMessage = document.getElementById('error-message');
+            if (errorMessage) {
+                errorMessage.textContent = 'An error occurred while tracking your complaint';
+            }
+            if (trackError) {
+                trackError.style.display = 'block';
+            }
+            if (complaintDetails) {
+                complaintDetails.style.display = 'none';
+            }
         } finally {
-            trackBtn.disabled = false;
-            trackBtn.textContent = 'Track';
+            if (trackBtn) {
+                trackBtn.disabled = false;
+                trackBtn.textContent = 'Track';
+            }
         }
     });
 
@@ -291,4 +375,46 @@ document.addEventListener('DOMContentLoaded', function () {
     function formatDate(date) {
         return date.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
+
+    // Intersection Observer for animations
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animate');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, observerOptions);
+
+    // Observe elements with animation classes
+    document.querySelectorAll('.message, .form-group, .detail-row').forEach(el => {
+        observer.observe(el);
+    });
+
+    // Add smooth scroll behavior
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            document.querySelector(this.getAttribute('href')).scrollIntoView({
+                behavior: 'smooth'
+            });
+        });
+    });
+
+    // Add loading state to buttons
+    document.querySelectorAll('.btn').forEach(button => {
+        button.addEventListener('click', function() {
+            if (!this.disabled) {
+                this.classList.add('loading');
+                setTimeout(() => {
+                    this.classList.remove('loading');
+                }, 2000);
+            }
+        });
+    });
 });

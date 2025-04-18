@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify,session
+from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 import mysql.connector
 import base64
@@ -10,7 +10,6 @@ import requests
 from PIL import Image
 import io
 import clip
-import time
 import torch
 from transformers import CLIPProcessor, CLIPModel
 import traceback
@@ -32,8 +31,8 @@ CORS(app,
     supports_credentials=True,
     resources={
         r"/*": {
-            "origins": ["http://127.0.0.1:5500", "http://localhost:5500"],
-            "allow_headers": ["Content-Type"],
+            "origins": ["http://127.0.0.1:5500", "http://localhost:5500","*"],
+            "allow_headers": ["Content-Type", "Authorization"],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "supports_credentials": True,
             "expose_headers": ["Content-Type"]
@@ -78,6 +77,7 @@ def init_db():
         user_id INT NOT NULL,
         department_id INT NOT NULL,
         description TEXT NOT NULL,
+        address TEXT NOT NULL,
         status ENUM('Pending', 'In Progress', 'Resolved') DEFAULT 'Pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -109,18 +109,14 @@ def init_db():
     
     # Insert default departments
     departments = [
-        "Electrical",  
-        "Road & Transport",
-        "Health & Sanitation",
+        "Electrical", 
+        "IT", 
         "Maintenance", 
         "Civil", 
-        "Public Safety", 
+        "Security", 
         "HR", 
         "Finance", 
-        "Administration",
-        "Education",
-        "Water Supply Department",
-        "Waste Management"
+        "Administration"
     ]
     
     for dept in departments:
@@ -137,48 +133,34 @@ def init_db():
 # Initialize database on startup
 init_db()
 
-# Helper function to classify complaint using keywords
 def classify_complaint(complaint_text):
-    # Define keywords for each department
-    department_keywords = {
-        "Health": [
-            "hospital", "medical", "health", "clinic", "equipment", "doctor", "nurse"
-        ],
-        "Maintenance": [
-            "equipment", "repair", "broken", "not working", "maintenance", "fix"
-        ],
-        "Civil": [
-            "illegal construction", "land", "building", "encroachment", "property", "house"
-        ],
-        "Electricity": [
-            "power", "electricity", "outage", "transformer", "voltage", "wire", "electric"
-        ],
-        "Water": [
-            "water", "supply", "pipeline", "leakage", "sewage", "drainage", "tap"
-        ],
-        "Sanitation": [
-            "garbage", "waste", "cleaning", "sanitation", "trash", "dustbin"
-        ],
-        "Road and Transport": [
-            "road", "transport", "traffic", "accident", "animals hit", "blocked road",
-            "pothole", "highway", "car", "bus", "vehicle", "public transport"
-        ],
-        "Tax": [
-            "tax", "property tax", "income tax", "gst", "fine", "penalty"
-        ],
-        "Municipality": [
-            "municipality", "local body", "council", "ward", "panchayat"
-        ]
-    }
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
-    # Check for keywords in the complaint text
-    complaint_text_lower = complaint_text.lower()
-    for department, keywords in department_keywords.items():
-        if any(keyword in complaint_text_lower for keyword in keywords):
-            return department
+    analysis_prompt = f"""As an AI complaint classifier, analyze this message and determine if it's a valid complaint:
 
-    # If no department matches, return None
-    return None
+    Message: {complaint_text}
+
+    First determine if this is a valid complaint about government services/infrastructure.
+    If it's not a clear complaint, respond with "casual".
+    If it is a complaint, classify it into one of these departments:
+    Administration, Civil, Education, Electrical, Finance, Health & Sanitation,
+    HR, IT, Maintenance, Public Safety, Road & Transport, Security, Waste Management, Water
+
+    Consider:
+    1. Is this a specific issue or just casual conversation?
+    2. Does it mention any concrete problems?
+    3. Is there enough context to classify it?
+    4. Which department would be most appropriate to handle this issue?
+
+    Respond with ONLY ONE WORD: either "casual" or the department name."""
+
+    response = model.generate_content(analysis_prompt)
+    classified_dept = response.text.strip()
+
+    # If classification is unclear or too vague, return casual
+    if classified_dept.lower() == "casual" or not classified_dept:
+        return "casual"
+    return classified_dept
 
 # Helper function to verify image relevance using CLIP
 def verify_image_relevance(image_data, complaint_text):
@@ -206,7 +188,7 @@ def verify_image_relevance(image_data, complaint_text):
             similarity = (100.0 * image_features @ text_features.T).item()
         
         # Check if similarity score exceeds threshold
-        return similarity > 20.0, similarity  # Threshold can be adjusted
+        return similarity > 25.0, similarity  # Threshold can be adjusted
     except Exception as e:
         print(f"Error in image verification: {str(e)}")
         return False, 0.0
@@ -218,94 +200,85 @@ def submit_complaint():
         name = data.get('name')
         email = data.get('email')
         phone = data.get('phone')
-        description = data.get('complaint')  
-        image_data = data.get('image')
+        description = data.get('complaint')
+        address = data.get('address')  # Get address from request
+        image_data = data.get('image')  # Base64-encoded image data
 
         # Generate a unique ticket number
         ticket_number = f"TKT-{uuid.uuid4().hex[:8].upper()}"
-        print(ticket_number)
-        # Connect to database
+
+        # Connect to the database
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
 
-        # First, get or create user
+        # Check if the user exists
         cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
         user = cursor.fetchone()
-        
+
         if not user:
-            # Create new user
+            # Create a new user if they don't exist
             cursor.execute("""
                 INSERT INTO users (name, email, phone)
                 VALUES (%s, %s, %s)
             """, (name, email, phone))
-            user_id = cursor.lastrowid
+            user_id = cursor.lastrowid  # Get the newly created user's ID
         else:
-            user_id = user[0]
+            user_id = user[0]  # Use the existing user's ID
 
         # Classify complaint to get department
         department_name = classify_complaint(description)
         cursor.execute("SELECT id FROM departments WHERE name = %s", (department_name,))
         department = cursor.fetchone()
-        
+
         if not department:
             # If department not found, assign to default department (Administration)
             cursor.execute("SELECT id FROM departments WHERE name = 'Administration'")
             department = cursor.fetchone()
-        
+
         department_id = department[0]
 
         # Handle image upload if present
         image_path = None
         if image_data:
-            try:
-                # Verify image relevance using CLIP
-                is_relevant, similarity_score = verify_image_relevance(image_data, description)
-                if not is_relevant:
-                    return jsonify({
-                        "success": False,
-                        "message": f"Irrelevant image attached. Similarity score: {similarity_score:.2f}. Complaint rejected."
-                    }), 400
+            # Verify image relevance using CLIP
+            is_relevant, similarity_score = verify_image_relevance(image_data, description)
+            if not is_relevant:
+                return jsonify({
+                    "success": False,
+                    "message": f"Irrelevant image attached. Similarity score: {similarity_score:.2f}. Complaint rejected."
+                }), 400
 
-                # Save the image
+            # Save the image if relevant
+            try:
                 image_bytes = base64.b64decode(image_data.split(',')[1])
                 os.makedirs("uploads", exist_ok=True)
                 image_path = f"uploads/{ticket_number}.jpg"
-
-                def delayed_save():
-                    time.sleep(0.1)  # short delay after response
-                    try:
-                        with open(image_path, "wb") as f:
-                            f.write(image_bytes)
-                        print("Image saved after short delay.")
-                    except Exception as e:
-                        print("Error in image saving:", e)
-                
-                # with open(image_path, "wb") as f:
-                #     f.write(image_bytes)
+                with open(image_path, "wb") as f:
+                    f.write(image_bytes)
             except Exception as e:
                 print("Image Processing Error:", str(e))
                 image_path = None
 
         # Insert the complaint into the database
         cursor.execute("""
-            INSERT INTO complaints (ticket_number, user_id, department_id, description, image_path)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (ticket_number, user_id, department_id, description, image_path))
-        
+            INSERT INTO complaints (ticket_number, user_id, department_id, description, address, image_path)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (ticket_number, user_id, department_id, description, address, image_path))
+
         conn.commit()
         cursor.close()
         conn.close()
 
         return jsonify({
             "success": True,
-            "message": "Complaint submitted successfully",
+            "message": "Complaint submitted successfully.",
             "ticket_number": ticket_number,
             "department": department_name
         })
 
     except Exception as e:
         print("Error:", str(e))
-        return jsonify({"success": False, "message": "An error occurred while submitting the complaint"}), 500
+        return jsonify({"success": False, "message": "An error occurred while submitting the complaint."}), 500
 
 # Route to track complaint status
 @app.route('/api/track_complaint', methods=['POST', 'OPTIONS'])
@@ -339,7 +312,7 @@ def track_complaint():
 
         # ✅ Fetch complaint details
         cursor.execute("""
-            SELECT c.ticket_number, c.description, c.status, c.created_at, 
+            SELECT c.ticket_number, c.description, c.status, c.created_at, c.address,
                    c.updated_at, COALESCE(d.name, 'Unknown') as department
             FROM complaints c
             LEFT JOIN departments d ON c.department_id = d.id
@@ -369,122 +342,77 @@ def admin_login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    
+
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor(dictionary=True)
-    
-    cursor.execute(
-        "SELECT id, username, department_id FROM admins WHERE username = %s AND password = %s",
-        (username, password)
-    )
-    
+
+    # Validate admin credentials
+    cursor.execute("""
+        SELECT a.id, a.username, a.department_id, d.name AS department_name
+        FROM admins a
+        LEFT JOIN departments d ON a.department_id = d.id
+        WHERE a.username = %s AND a.password = %s
+    """, (username, password))
     admin = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    
+
     if admin:
-        # Clear any existing session
-        session.clear()
-        
-        # Set session data
         session['admin_id'] = admin['id']
         session['admin_username'] = admin['username']
-        session['department_id'] = admin['department_id']
-        session.permanent = True  # Make session permanent
-        
-        response = jsonify({
-            "success": True, 
-            "admin": admin,
-            "message": "Login successful"
-        })
-        
-        return response
+        session['department_name'] = admin['department_name']  # Store department name in the session
+        session.permanent = True  # Make the session persistent
+        return jsonify({"success": True, "message": "Login successful"})
     else:
-        return jsonify({
-            "success": False,
-            "message": "Invalid username or password"
-        })
+        return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
 # Route to get all complaints for admin
 @app.route('/api/admin/complaints', methods=['GET'])
 def get_all_complaints():
     if 'admin_id' not in session:
-        print("No admin session found")
         return jsonify({"success": False, "message": "Please login first"})
     
+    department = request.args.get('department')
+    status = request.args.get('status')
+    
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor(dictionary=True)
+    
+    query = """
+        SELECT c.id, c.ticket_number, c.description, c.status, 
+               c.created_at, c.updated_at, d.name as department,
+               u.name as user_name, u.email as user_email
+        FROM complaints c
+        JOIN departments d ON c.department_id = d.id
+        JOIN users u ON c.user_id = u.id
+        WHERE 1=1
+    """
+    params = []
+    
+    if department:
+        query += " AND d.name = %s"
+        params.append(department)
+    
+    if status:
+        query += " AND c.status = %s"
+        params.append(status)
+    
+    query += " ORDER BY c.created_at DESC"
+    
     try:
-        # Get filter parameters
-        department_id = request.args.get('department_id')
-        status = request.args.get('status')
-        
-        print(f"Received filter parameters - department_id: {department_id}, status: {status}")
-        
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor(dictionary=True)
-        
-        # Base query with joins
-        query = """
-            SELECT c.id, c.ticket_number, c.description, c.status, 
-                   c.created_at, c.updated_at, d.name as department,
-                   u.name as user_name, u.email as user_email
-            FROM complaints c
-            JOIN departments d ON c.department_id = d.id
-            JOIN users u ON c.user_id = u.id
-            WHERE 1=1
-        """
-        params = []
-        
-        # Add department filter if specified
-        if department_id and department_id != "" and department_id != "0":
-            try:
-                department_id = int(department_id)
-                query += " AND c.department_id = %s"
-                params.append(department_id)
-                print(f"Adding department filter: department_id = {department_id}")
-            except ValueError:
-                print(f"Invalid department ID: {department_id}")
-                return jsonify({"success": False, "message": "Invalid department ID"}), 400
-        
-        # Add status filter if specified
-        if status and status != "":
-            query += " AND c.status = %s"
-            params.append(status)
-            print(f"Adding status filter: status = {status}")
-        
-        # Add order by clause
-        query += " ORDER BY c.created_at DESC"
-        
-        # Debug print
-        print(f"Executing query: {query}")
-        print(f"With params: {params}")
-        
-        # Execute query
         cursor.execute(query, params)
         complaints = cursor.fetchall()
-        
-        # Debug print
-        print(f"Found {len(complaints)} complaints")
-        if len(complaints) > 0:
-            print("Sample complaint:", complaints[0])
         
         # Format dates for JSON
         for complaint in complaints:
             complaint['created_at'] = complaint['created_at'].isoformat()
             complaint['updated_at'] = complaint['updated_at'].isoformat()
         
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            "success": True, 
-            "complaints": complaints,
-            "total": len(complaints)
-        })
-        
+        return jsonify({"success": True, "complaints": complaints})
     except Exception as e:
         print("Error fetching complaints:", str(e))
-        print("Full traceback:", traceback.format_exc())
-        return jsonify({"success": False, "message": f"Error fetching complaints: {str(e)}"}), 500
+        return jsonify({"success": False, "message": "Error fetching complaints"}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 # Route to update complaint status
 @app.route('/api/admin/update_status', methods=['POST'])
@@ -557,8 +485,44 @@ def get_departments():
         print("Error fetching departments:", str(e))
         return jsonify({"success": False, "message": "Internal Server Error"})
 
+@app.route('/api/admin/complaints/<int:complaint_id>', methods=['GET'])
+def get_complaint_details(complaint_id):
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+
+        # Updated query to remove latitude and longitude
+        cursor.execute("""
+            SELECT c.id, c.ticket_number, c.description, c.status, 
+                   c.created_at, c.updated_at, c.image_path,
+                   c.address,
+                   d.name AS department, u.name AS user_name, 
+                   u.email AS user_email
+            FROM complaints c
+            JOIN departments d ON c.department_id = d.id
+            JOIN users u ON c.user_id = u.id
+            WHERE c.id = %s
+        """, (complaint_id,))
+        complaint = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        if not complaint:
+            return jsonify({"success": False, "message": "Complaint not found"}), 404
+
+        # Format dates for JSON
+        complaint['created_at'] = complaint['created_at'].isoformat()
+        complaint['updated_at'] = complaint['updated_at'].isoformat()
+
+        return jsonify({"success": True, "complaint": complaint})
+
+    except Exception as e:
+        print("Error:", str(e))
+        return jsonify({"success": False, "message": "An error occurred while fetching complaint details"}), 500
+
 @app.route('/api/chat', methods=['POST'])
-def chat_with_grievebuddy():
+def chat_with_llm():
     try:
         data = request.json
         user_message = data.get('message')
@@ -566,87 +530,152 @@ def chat_with_grievebuddy():
         if not user_message:
             return jsonify({"success": False, "message": "Message is required"}), 400
 
-        # Basic greetings
-        greetings = ["hi", "hello", "hey", "good morning", "good evening"]
-        if any(greet in user_message.lower() for greet in greetings):
+        # Use Gemini to analyze the message and generate response
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        
+        analysis_prompt = f"""You are GrieveBuddy, a friendly and helpful government grievance chatbot assistant. 
+        Analyze the following user message and respond naturally while maintaining professionalism:
+        User message: {user_message}
+
+        If the message is:
+        - A greeting: Respond warmly and ask how you can help with their grievance
+        - A thank you: Acknowledge graciously and offer further assistance
+        - A follow-up question: Provide helpful guidance about the grievance process
+        - A complaint: Identify the relevant department and guide them to submit formally
+        - Casual chat: Politely redirect to grievance-related topics
+
+        Available departments for complaints:
+        Administration, Civil, Education, Electrical, Finance, Health & Sanitation, 
+        HR, IT, Maintenance, Public Safety, Road & Transport, Security, Waste Management, Water
+
+        Remember to:
+        1. Keep responses conversational but professional
+        2. Show empathy for grievances
+        3. Guide users toward formal complaint submission
+        4. Maintain context in follow-up responses
+
+        Respond in this exact JSON format (no additional text):
+        {{"type": "greeting|thanks|followup|complaint|casual", "reply": "your response here", "department": "department_name"}}"""
+
+        response = model.generate_content(analysis_prompt)
+        
+        try:
+            # Clean the response text
+            clean_response = response.text.strip().replace('\n', '').replace('```json', '').replace('```', '')
+            result = json.loads(clean_response)
+            
+            if result["type"] == "complaint":
+                return jsonify({
+                    "success": True,
+                    "type": "complaint",
+                    "department": result.get("department", "Administration"),
+                    "message": result["reply"]
+                })
+            else:
+                return jsonify({
+                    "success": True,
+                    "type": result["type"],
+                    "reply": result["reply"]
+                })
+                
+        except json.JSONDecodeError as e:
+            print("JSON Parse Error:", e)
             return jsonify({
                 "success": True,
-                "type": "greeting",
-                "reply": "Hello! I am GrieveBuddy. How can I assist you with your government-related grievances today?"
+                "type": "casual",
+                "reply": "I apologize, but I'm having trouble understanding. Could you please rephrase that?"
             })
 
-        # Classify the message as government-related or not
-        department = classify_complaint(user_message)
+    except Exception as e:
+        print("Error in chat_with_llm:", str(e))
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "message": "An error occurred while processing your message"
+        }), 500
 
-        if department:
-            # If classified as a complaint, return the department
-            return jsonify({
-                "success": True,
-                "type": "complaint",
-                "department": department,
-                "reply": f"Your grievance seems related to the {department} department. Please fill out the form to submit your complaint."
-            })
+@app.route('/api/admin/reports', methods=['GET'])
+def get_reports():
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
 
-        # Reject personal or irrelevant problems
-        personal_keywords = ["relationship", "family", "friend", "personal", "health issue", "job"]
-        if any(keyword in user_message.lower() for keyword in personal_keywords):
-            return jsonify({
-                "success": True,
-                "type": "rejected",
-                "reply": "Sorry, this is not a correct grievance to submit. Please provide a government-related grievance."
-            })
+        # Fetch statistics
+        cursor.execute("""
+            SELECT COUNT(*) AS total_complaints,
+                   SUM(CASE WHEN status = 'Resolved' THEN 1 ELSE 0 END) AS resolved_complaints,
+                   SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending_complaints,
+                   SUM(CASE WHEN status = 'In Progress' THEN 1 ELSE 0 END) AS in_progress_complaints
+            FROM complaints
+        """)
+        statistics = cursor.fetchone()
 
-        # For irrelevant or casual conversations
+        # Fetch chart data (example: complaints by department)
+        cursor.execute("""
+            SELECT d.name AS department, COUNT(*) AS total
+            FROM complaints c
+            JOIN departments d ON c.department_id = d.id
+            GROUP BY d.name
+        """)
+        chart_data = cursor.fetchall()
+
+        # Fetch status data for pie chart
+        cursor.execute("""
+            SELECT status, COUNT(*) AS count
+            FROM complaints
+            GROUP BY status
+        """)
+        status_data = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
         return jsonify({
             "success": True,
-            "type": "irrelevant",
-            "reply": "This is not in my scope. Please provide a government-related grievance."
+            "statistics": statistics,
+            "chartData": chart_data,
+            "statusData": status_data  # Include status data for pie chart
         })
 
     except Exception as e:
-        print("Error:", e)
-        return jsonify({"success": False, "message": "An error occurred while processing the request"}), 500
+        print("Error:", str(e))
+        return jsonify({"success": False, "message": "An error occurred while fetching reports"}), 500
 
-# Debug route to check complaints by department
-@app.route('/api/debug/check_department', methods=['GET'])
-def check_department_complaints():
-    try:
-        department_id = request.args.get('department_id')
-        if not department_id:
-            return jsonify({"success": False, "message": "Department ID is required"}), 400
-            
+@app.route('/api/admin/session', methods=['GET'])
+def validate_admin_session():
+    if 'admin_id' in session:
+        # Get admin info from database
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor(dictionary=True)
         
-        # Check if department exists
-        cursor.execute("SELECT id, name FROM departments WHERE id = %s", (department_id,))
-        department = cursor.fetchone()
-        if not department:
-            return jsonify({"success": False, "message": f"Department with ID {department_id} not found"}), 404
-            
-        # Get complaints for this department
         cursor.execute("""
-            SELECT c.id, c.ticket_number, c.status, d.name as department
-            FROM complaints c
-            JOIN departments d ON c.department_id = d.id
-            WHERE c.department_id = %s
-        """, (department_id,))
+            SELECT a.username, d.name as department_name 
+            FROM admins a 
+            LEFT JOIN departments d ON a.department_id = d.id 
+            WHERE a.id = %s
+        """, (session['admin_id'],))
         
-        complaints = cursor.fetchall()
-        
+        admin = cursor.fetchone()
         cursor.close()
         conn.close()
-        
+
         return jsonify({
             "success": True,
-            "department": department,
-            "complaints": complaints,
-            "total": len(complaints)
+            "admin_id": session['admin_id'],
+            "admin_username": admin['username'],
+            "department_name": admin['department_name']
         })
-        
-    except Exception as e:
-        print("Error checking department:", str(e))
-        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
+    else:
+        return jsonify({"success": False, "message": "Admin session is not active"})
+
+@app.route('/api/admin/logout', methods=['POST'])
+def admin_logout():
+    session.clear()
+    return jsonify({"success": True, "message": "Logged out successfully"})
+
+@app.route('/uploads/<path:filename>')
+def serve_image(filename):
+    return send_from_directory('uploads', filename)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='localhost', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
