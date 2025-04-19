@@ -116,7 +116,7 @@ CORS(app,
 db_config = {
     "host": "localhost",
     "user": "root",
-    "password": "ashimonusql@0",
+    "password": "root",
     "database": "grievance_db"
 }
 

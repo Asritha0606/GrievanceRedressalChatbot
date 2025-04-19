@@ -282,6 +282,39 @@ header p {
     background-color: var(--secondary-color);
 }
 
+/* Voice Input Button */
+#voice-input-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--primary-color);
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#voice-input-btn:hover {
+    background-color: var(--secondary-color);
+}
+
+#voice-input-btn.recording {
+    background-color: var(--danger-color); /* Change color to indicate recording */
+    animation: pulse 1s infinite; /* Add a pulsing effect */
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
 /* Form Styles */
 .complaint-form, .track-container {
     animation: slideInFromRight 0.8s ease-out;

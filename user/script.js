@@ -47,14 +47,16 @@ document.addEventListener('DOMContentLoaded', function () {
             messageDiv.style.opacity = '0';
             setTimeout(() => {
                 messageDiv.style.opacity = '1';
-            }, 100);
+            }, 0);
         }
         
-        const chatMessages = document.getElementById('chat-messages');
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return messageDiv;
     }
+
+    // Add initial bot message
+    addMessage("Hello! I'm here to help you submit your grievance. Please tell me about your issue, and I'll make sure it gets to the right department.");
 
     async function handleUserInput() {
         const message = userInput.value.trim();
@@ -140,6 +142,59 @@ document.addEventListener('DOMContentLoaded', function () {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleUserInput();
+        }
+    });
+
+    // Voice Input Functionality
+    const voiceInputBtn = document.createElement('button');
+    voiceInputBtn.id = 'voice-input-btn';
+    voiceInputBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+    voiceInputBtn.classList.add('btn'); // Add the same class as the send button for consistent styling
+    voiceInputBtn.style.marginRight = '10px'; // Add spacing between the voice button and the send button
+
+    const chatInputContainer = document.querySelector('.chat-input');
+    chatInputContainer.insertBefore(voiceInputBtn, document.getElementById('send-btn'));
+
+    let recognition;
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            console.log('Voice recognition started...');
+            voiceInputBtn.classList.add('recording'); // Add a class to indicate recording
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            console.log('Voice input:', transcript);
+            userInput.value = transcript; // Place the text in the chat input field
+            userInput.focus();
+            userInput.select(); // Select the text so the user can edit or delete it
+        };
+
+        recognition.onend = () => {
+            console.log('Voice recognition ended.');
+            voiceInputBtn.classList.remove('recording'); // Remove the recording indicator
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Voice recognition error:', event.error);
+            alert('An error occurred during voice recognition. Please try again.');
+            voiceInputBtn.classList.remove('recording');
+        };
+    } else {
+        console.warn('SpeechRecognition is not supported in this browser.');
+        voiceInputBtn.style.display = 'none'; // Hide the button if not supported
+    }
+
+    voiceInputBtn.addEventListener('click', () => {
+        if (recognition) {
+            recognition.start();
+        } else {
+            alert('Voice input is not supported in this browser.');
         }
     });
 
@@ -229,6 +284,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     submitBtn.addEventListener('click', submitComplaint);
 
+    // Submit Another Complaint
     document.getElementById('new-complaint').addEventListener('click', () => {
         // Hide the submission result
         document.getElementById('submission-result').style.display = 'none';
@@ -246,17 +302,12 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('complaint-form').style.display = 'none';
         
         // Reset the chat with an informative message
-        const chatMessages = document.getElementById('chat-messages');
         const previousTicket = document.getElementById('ticket-number').textContent;
         const previousDepartment = document.getElementById('assigned-department').textContent;
         
-        chatMessages.innerHTML = `
-            <div class="message bot">
-                Great! Your previous grievance (Ticket: ${previousTicket}) has been successfully submitted and classified under ${previousDepartment} department. We'll keep you updated on its progress.
-                <br><br>
-                How else can I assist you today? Feel free to share any other grievance you have, and I'll help direct it to the appropriate department.
-            </div>
-        `;
+        addMessage(`Great! Your previous grievance (Ticket: ${previousTicket}) has been successfully submitted and classified under ${previousDepartment} department. We'll keep you updated on its progress.
+        <br><br>
+        How else can I assist you today? Feel free to share any other grievance you have, and I'll help direct it to the appropriate department.`);
         
         // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });

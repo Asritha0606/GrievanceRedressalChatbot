@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Portal</title>
-    <link rel="stylesheet" href="userportal.css">
+    <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1><i class="fas fa-comment-dots"></i> GrieveBuddy</h1>
+            <h1><i class="fas fa-comment-dots"></i>GrieveBuddy</h1>
             <p>Submit your grievances and track their status</p>
         </header>
 
@@ -24,9 +24,7 @@
             <section id="submit-section" class="tab-content active">
                 <div class="chat-container">
                     <div class="chat-messages" id="chat-messages">
-                        <div class="message bot">
-                            Hello! I'm here to help you submit your grievance. Please tell me about your issue, and I'll make sure it gets to the right department.
-                        </div>
+                        <!-- Will be sent by the Chatbot -->
                     </div>
                     <div class="chat-input">
                         <input id="user-input" placeholder="Describe your complaint here..."></input>
@@ -135,6 +133,6 @@
         </footer>
     </div>
 
-    <script src="userportal.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
