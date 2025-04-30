@@ -701,6 +701,46 @@ header p {
     75% { transform: translateX(10px); }
 }
 
+/* Notification styles */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 25px;
+    border-radius: 5px;
+    z-index: 1000;
+    animation: slideIn 0.3s ease-out;
+}
+
+.notification.info {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.notification.error {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.notification.success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.notification.fade-out {
+    animation: slideOut 0.3s ease-in;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+
 /* Footer */
 footer {
     text-align: center;

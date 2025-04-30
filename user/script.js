@@ -217,21 +217,16 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Submit Complaint
-    const submitBtn = document.getElementById('submit-complaint');
-    const submissionResult = document.getElementById('submission-result');
-    const ticketNumberElem = document.getElementById('ticket-number');
-    const assignedDeptElem = document.getElementById('assigned-department');
-
     async function submitComplaint() {
         const name = document.getElementById('name').value.trim();
         const email = document.getElementById('email').value.trim();
         const phone = document.getElementById('phone').value.trim();
         const complaint = document.getElementById('complaint').value.trim();
         const address = document.getElementById('address').value.trim();
+        const imageUpload = document.getElementById('image-upload');
 
-        // Remove image from required fields check
-        if (!name || !email || !complaint || !address) {
-            alert('Please fill all required fields');
+        if (!name || !email || !phone || !complaint || !address) {
+            showNotification('Please fill in all required fields', 'error');
             return;
         }
 
@@ -243,7 +238,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 reader.readAsDataURL(imageUpload.files[0]);
             });
         }
-        // Image is now optional, so we continue with or without it
+
         const data = { name, email, phone, complaint, address, image: imageData };
 
         try {
@@ -254,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             const result = await response.json();
-            console.log(result) 
+            console.log(result);
 
             if (result.success) {
                 // Update the ticket number and department in the UI
@@ -272,17 +267,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('complaint').value = '';
                 document.getElementById('address').value = '';
                 imageUpload.value = '';
-                imagePreview.innerHTML = '';
+                document.getElementById('image-preview').innerHTML = '';
             } else {
-                alert(result.message || 'Failed to submit complaint');
+                showNotification(result.message || 'Failed to submit complaint', 'error');
             }
         } catch (error) {
             console.error('Error submitting complaint:', error);
-            alert('An error occurred while submitting the complaint.');
+            showNotification('An error occurred while submitting the complaint.', 'error');
         }
     }
 
-    submitBtn.addEventListener('click', submitComplaint);
+    document.getElementById('submit-complaint').addEventListener('click', submitComplaint);
 
     // Submit Another Complaint
     document.getElementById('new-complaint').addEventListener('click', () => {
@@ -295,8 +290,8 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('phone').value = '';
         document.getElementById('complaint').value = '';
         document.getElementById('address').value = '';
-        imageUpload.value = '';
-        imagePreview.innerHTML = '';
+        document.getElementById('image-upload').value = '';
+        document.getElementById('image-preview').innerHTML = '';
         
         // Show the chat interface
         document.getElementById('complaint-form').style.display = 'none';
@@ -306,7 +301,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const previousDepartment = document.getElementById('assigned-department').textContent;
         
         addMessage(`Great! Your previous grievance (Ticket: ${previousTicket}) has been successfully submitted and classified under ${previousDepartment} department. We'll keep you updated on its progress.
-        <br><br>
+        
         How else can I assist you today? Feel free to share any other grievance you have, and I'll help direct it to the appropriate department.`);
         
         // Scroll to top
@@ -423,6 +418,27 @@ document.addEventListener('DOMContentLoaded', function () {
         return date.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
+    function showNotification(message, type = 'info') {
+        const existingNotification = document.querySelector('.notification');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+
+        document.body.appendChild(notification);
+
+        // Remove notification after 3 seconds
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }, 3000);
+    }
+
     // Intersection Observer for animations
     const observerOptions = {
         threshold: 0.1,
@@ -465,3 +481,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
+
+
+

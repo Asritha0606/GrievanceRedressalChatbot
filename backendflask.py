@@ -18,76 +18,6 @@ from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from geopy.geocoders import Nominatim
 
-def extract_location_from_image(image_data):
-    def extract_gps_data(image):
-        exif_data = image._getexif()
-        if not exif_data:
-            return None, None
-
-        gps_info = {}
-        for tag_id, value in exif_data.items():
-            tag = TAGS.get(tag_id, tag_id)
-            if tag == "GPSInfo":
-                for key in value:
-                    sub_tag = GPSTAGS.get(key, key)
-                    gps_info[sub_tag] = value[key]
-
-        if 'GPSLatitude' in gps_info and 'GPSLongitude' in gps_info:
-            lat = convert_to_decimal(gps_info['GPSLatitude'], gps_info.get('GPSLatitudeRef'))
-            lon = convert_to_decimal(gps_info['GPSLongitude'], gps_info.get('GPSLongitudeRef'))
-            return lat, lon
-        return None, None
-
-    def convert_to_decimal(dms, ref):
-        def to_float(val):
-            try:
-                return val[0] / val[1]  # Tuple form
-            except TypeError:
-                return float(val)  # IFDRational form
-
-        degrees = to_float(dms[0])
-        minutes = to_float(dms[1])
-        seconds = to_float(dms[2])
-
-        decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
-
-        if ref in ['S', 'W']:
-            decimal = -decimal
-        return decimal
-
-    def reverse_geocode(lat, lon):
-        geolocator = Nominatim(user_agent="geoapi")
-        location = geolocator.reverse((lat, lon), exactly_one=True, timeout=10)
-        return location.address if location else "Address not found."
-
-    try:
-        if not image_data:
-            raise ValueError("No image data provided")
-
-        # Decode base64 image
-        image_bytes = base64.b64decode(image_data.split(',')[1])
-        img = Image.open(io.BytesIO(image_bytes))
-        latitude, longitude = extract_gps_data(img)
-
-        if latitude is not None and longitude is not None:
-            address = reverse_geocode(latitude, longitude)
-            return {
-                'latitude': latitude,
-                'longitude': longitude,
-                'address': address
-            }
-        else:
-            return {
-                'error': 'GPS data not found in image.'
-            }
-
-    except Exception as e:
-        return {'error': str(e)}
-
-# === Example usage ===
-# result = get_image_location(r"C:\Users\asrit\OneDrive\Desktop\GPS Images\test.jpg")
-
-
 app = Flask(__name__)
 app.secret_key = 'grievance_chatbot_secret_key'  # Single secret key
 
@@ -116,7 +46,7 @@ CORS(app,
 db_config = {
     "host": "localhost",
     "user": "root",
-    "password": "root",
+    "password": "ashimonusql@0",
     "database": "grievance_db"
 }
 
@@ -205,6 +135,91 @@ def init_db():
 # Initialize database on startup
 init_db()
 
+def extract_location_from_image(image_data):
+    def extract_gps_data(image):
+        try:
+            exif_data = image._getexif()
+            if not exif_data:
+                print("No EXIF data found in image")
+                return None, None
+
+            gps_info = {}
+            for tag_id, value in exif_data.items():
+                tag = TAGS.get(tag_id, tag_id)
+                if tag == "GPSInfo":
+                    for key in value:
+                        sub_tag = GPSTAGS.get(key, key)
+                        gps_info[sub_tag] = value[key]
+
+            if not gps_info:
+                print("No GPS info found in EXIF data")
+                return None, None
+
+            if 'GPSLatitude' in gps_info and 'GPSLongitude' in gps_info:
+                lat = convert_to_decimal(gps_info['GPSLatitude'], gps_info.get('GPSLatitudeRef'))
+                lon = convert_to_decimal(gps_info['GPSLongitude'], gps_info.get('GPSLongitudeRef'))
+                return lat, lon
+            return None, None
+        except Exception as e:
+            print(f"Error extracting GPS data: {str(e)}")
+            return None, None
+
+    def convert_to_decimal(dms, ref):
+        try:
+            def to_float(val):
+                try:
+                    return val[0] / val[1]  # Tuple form
+                except TypeError:
+                    return float(val)  # IFDRational form
+
+            degrees = to_float(dms[0])
+            minutes = to_float(dms[1])
+            seconds = to_float(dms[2])
+
+            decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+
+            if ref in ['S', 'W']:
+                decimal = -decimal
+            return decimal
+        except Exception as e:
+            print(f"Error converting coordinates: {str(e)}")
+            return None
+
+    try:
+        if not image_data:
+            return {'error': 'Image is required with GPS data'}
+
+        # Decode base64 image
+        try:
+            image_bytes = base64.b64decode(image_data.split(',')[1])
+            img = Image.open(io.BytesIO(image_bytes))
+
+            # Extract GPS data
+            latitude, longitude = extract_gps_data(img)
+            
+            if latitude is not None and longitude is not None:
+                print(f"GPS coordinates found: {latitude}, {longitude}")
+                try:
+                    geolocator = Nominatim(user_agent="geoapi")
+                    location = geolocator.reverse((latitude, longitude), exactly_one=True, timeout=10)
+                    address = location.address if location else None
+                    if not address:
+                        return {'error': 'Could not extract address from GPS coordinates'}
+                    return {
+                        'latitude': latitude,
+                        'longitude': longitude,
+                        'address': address
+                    }
+                except Exception as e:
+                    return {'error': 'Failed to get address from coordinates'}
+            else:
+                return {'error': 'No GPS data found in image. Please submit an image with GPS location data.'}
+
+        except Exception as e:
+            return {'error': 'Invalid image format or corrupted image data'}
+
+    except Exception as e:
+        return {'error': str(e)}
 
 # Helper function to verify image relevance using CLIP
 def verify_image_relevance(image_data, complaint_text):
@@ -228,14 +243,17 @@ def verify_image_relevance(image_data, complaint_text):
             image_features /= image_features.norm(dim=-1, keepdim=True)
             text_features /= text_features.norm(dim=-1, keepdim=True)
             
-            # Calculate similarity score with increased threshold
+            # Calculate similarity score
             similarity = (100.0 * image_features @ text_features.T).item()
-        
-        # Increased threshold to 25.0 (0.25)
-        return similarity > 5.0, similarity
+            
+            # Threshold check with detailed message
+            if similarity <= 25.0:
+                return False, f"Irrelevant image attached. Similarity score: {similarity:.2f}%. Please upload a relevant image."
+            return True, similarity
+
     except Exception as e:
         print(f"Error in image verification: {str(e)}")
-        return False, 0.0
+        return False, "Error processing image relevance"
 
 def classify_complaint(complaint_text):
     model = genai.GenerativeModel("gemini-2.0-flash")
@@ -287,10 +305,10 @@ def submit_complaint():
         email = data.get('email')
         phone = data.get('phone')
         description = data.get('complaint')
-        form_address = data.get('address')  # Store form address separately
+        form_address = data.get('address')
         image_data = data.get('image')
 
-        # Generate ticket number
+        # Generate ticket number first
         ticket_number = f"TKT-{uuid.uuid4().hex[:8].upper()}"
 
         # Connect to database
@@ -323,24 +341,31 @@ def submit_complaint():
         department = cursor.fetchone()
         department_id = department[0] if department else 1  # Default to Administration
 
-        # Handle address and location data
-        final_address = form_address  # Default to form address
-        if image_data:
-            location_data = extract_location_from_image(image_data)
-            if not location_data.get('error') and location_data.get('address'):
-                # If GPS data is successfully extracted, use it instead of form address
-                final_address = location_data['address']
-
-        # Handle image upload and verification
+        # Handle image and location data
         image_path = None
+        final_address = form_address
+
         if image_data:
-            is_relevant, similarity_score = verify_image_relevance(image_data, description)
+            # First check GPS data
+            location_data = extract_location_from_image(image_data)
+            if location_data.get('error'):
+                return jsonify({
+                    "success": False,
+                    "message": "Please provide an image with GPS location data"
+                }), 400
+            
+            # Use location from image
+            final_address = location_data['address']
+
+            # Then verify image relevance
+            is_relevant, result = verify_image_relevance(image_data, description)
             if not is_relevant:
                 return jsonify({
                     "success": False,
-                    "message": f"Irrelevant image attached. Similarity score: {similarity_score:.2f}. Complaint rejected."
+                    "message": result
                 }), 400
 
+            # Finally save the image
             try:
                 image_bytes = base64.b64decode(image_data.split(',')[1])
                 os.makedirs("uploads", exist_ok=True)
@@ -351,7 +376,7 @@ def submit_complaint():
                 print("Image Processing Error:", str(e))
                 image_path = None
 
-        # Insert complaint with final address
+        # Insert complaint
         cursor.execute("""
             INSERT INTO complaints (ticket_number, user_id, department_id, description, address, image_path)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -365,8 +390,7 @@ def submit_complaint():
             "success": True,
             "message": "Complaint submitted successfully.",
             "ticket_number": ticket_number,
-            "department": department_name,
-            "address_source": "GPS" if final_address != form_address else "Form"
+            "department": department_name
         }), 200
 
     except Exception as e:
