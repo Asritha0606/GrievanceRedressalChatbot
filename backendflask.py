@@ -5,16 +5,12 @@ import base64
 import os
 import uuid
 import json
-from datetime import datetime
-import requests
 from PIL import Image
 import io
 import clip
 import torch
-from transformers import CLIPProcessor, CLIPModel
 import traceback
 import google.generativeai as genai
-from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from geopy.geocoders import Nominatim
 
@@ -46,7 +42,7 @@ CORS(app,
 db_config = {
     "host": "localhost",
     "user": "root",
-    "password": "ashimonusql@0",
+    "password": "sid87",
     "database": "grievance_db"
 }
 
