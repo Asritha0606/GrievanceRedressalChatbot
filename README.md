@@ -158,28 +158,36 @@ GrievanceRedressalChatbot/
 
 ### User Interface
 ![User Chat Interface](screenshots/user-chat.png)
+
 *AI Chatbot interface for submitting complaints*
 
 ![Complaint Form](screenshots/complaint-form.png)
+
 *Complaint submission form with image upload*
 
 ![Track Complaint](screenshots/track-complaint.png)
+
 *Complaint tracking interface showing status and details*
 
 ### Admin Interface
 ![Admin Dashboard](screenshots/admin-login.png)
+
 *Administration login*
 
 ![Complaints view](screenshots/complaint-view.png)
+
 *Detailed complaint management interface*
 
 ![Complaints Management](screenshots/complaints-list.png)
+
 *Complaints list with filtering and status management*
 
 ![Department View](screenshots/department-view.png)
+
 *Department-wise complaint management*
 
 ![Analytics](screenshots/analytics.png)
+
 *Statistical reports and charts*
 
 ## 🤝 Contribution Guidelines
