@@ -176,6 +176,7 @@ For support:
 ## 🙏 Acknowledgments
 
 - Google Gemini AI for chatbot capabilities
-- CLIP team for image verification
-- Flask team for the web framework
-- All contributors and maintainers 
+- CLIP for image verification
+- Geopy for image location service
+- Flask for the web framework
+- All the contributors of project
