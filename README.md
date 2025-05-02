@@ -1,48 +1,61 @@
 # Grievance Redressal Chatbot
 
-A comprehensive grievance redressal system with AI-powered chatbot support, image verification, and GPS location tracking.
+A comprehensive grievance redressal system with AI-powered chatbot support, image verification, and GPS location tracking. This system helps citizens submit and track their complaints about government services efficiently.
 
-## Features
+## 🌟 Key Features
 
-- 🤖 AI-powered chatbot for initial complaint assessment
+### For Citizens
+- 🤖 AI-powered chatbot for initial complaint assessment and guidance
 - 📸 Image upload with GPS location verification
-- 🔍 CLIP-based image relevance verification
-- 📊 Admin dashboard with complaint management
-- 📈 Real-time analytics and reporting
-- 🔐 Secure admin authentication
-- 📱 Responsive design for both user and admin interfaces
+- 🔍 Smart image relevance verification using CLIP
+- 📱 Real-time complaint status tracking
+- 💬 Interactive chat interface for complaint submission
+- 📍 Automatic location detection from images
 
-## Tech Stack
+### For Administrators
+- 📊 Comprehensive admin dashboard
+- 📈 Real-time analytics and reporting
+- 🔍 Advanced complaint filtering and search
+- 👥 Department-wise complaint management
+- 📱 Responsive admin interface
+- 📊 Visual analytics with charts and graphs
+
+## 🛠️ Tech Stack
 
 ### Backend
-- Flask (Python web framework)
-- MySQL Database
-- Google Gemini AI for chatbot
-- CLIP for image verification
-- Geopy for location services
+- **Framework**: Flask 3.0.0 (Python web framework)
+- **Database**: MySQL 8.2.0
+- **AI/ML**:
+  - Google Gemini AI for chatbot
+  - CLIP for image verification
+  - Transformers for text processing
+- **Location Services**: Geopy for GPS processing
+- **Image Processing**: Pillow for image handling
 
 ### Frontend
 - HTML5
 - CSS3
-- JavaScript (Vanilla)
+- Vanilla JavaScript
 - Responsive Design
+- Chart.js for analytics
 
-## Prerequisites
+## 📋 Prerequisites
 
-- Python 3.8+
-- MySQL Server
+- Python 3.8 or higher
+- MySQL Server 8.0 or higher
 - Google Cloud API Key (for Gemini AI)
-- Modern web browser
+- Modern web browser with JavaScript enabled
+- Git (for version control)
 
-## Installation
+## 🚀 Installation
 
-1. Clone the repository:
+1. **Clone the repository**:
 ```bash
 git clone <repository-url>
 cd GrievanceRedressalChatbot
 ```
 
-2. Create and activate virtual environment:
+2. **Set up virtual environment**:
 ```bash
 python -m venv .venv
 # On Windows
@@ -51,12 +64,12 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-3. Install dependencies:
+3. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Configure MySQL:
+4. **Configure MySQL**:
 - Create a database named `grievance_db`
 - Update database configuration in `backendflask.py`:
 ```python
@@ -68,82 +81,101 @@ db_config = {
 }
 ```
 
-5. Configure Google Gemini AI:
+5. **Configure Google Gemini AI**:
 - Get your API key from Google Cloud Console
 - Update the API key in `backendflask.py`:
 ```python
 genai.configure(api_key="your_api_key")
 ```
 
-## Running the Application
+6. **Environment Variables**:
+Create a `.env` file in the root directory:
+```env
+FLASK_APP=backendflask.py
+FLASK_ENV=development
+SECRET_KEY=your_secret_key
+DB_HOST=localhost
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=grievance_db
+GEMINI_API_KEY=your_gemini_api_key
+```
 
-1. Start the Flask server:
+## 🏃‍♂️ Running the Application
+
+1. **Start the Flask server**:
 ```bash
 python backendflask.py
 ```
 
-2. Open the application:
+2. **Access the application**:
 - User Interface: `http://localhost:5500/user/index.html`
 - Admin Interface: `http://localhost:5500/admin/index.html`
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 GrievanceRedressalChatbot/
 ├── backendflask.py          # Main Flask application
 ├── requirements.txt         # Python dependencies
+├── .env                     # Environment variables
 ├── uploads/                 # Uploaded complaint images
-├── user/                   # User interface
-│   ├── index.html
-│   ├── styles.css
-│   └── script.js
-└── admin/                  # Admin interface
-    ├── index.html
-    ├── styles.css
-    └── script.js
+├── user/                    # User interface
+│   ├── index.html          # Main user page
+│   ├── styles.css          # User styles
+│   └── script.js           # User interface logic
+└── admin/                   # Admin interface
+    ├── index.html          # Admin dashboard
+    ├── styles.css          # Admin styles
+    └── script.js           # Admin interface logic
 ```
 
-## Features in Detail
+## 🔒 Security Features
 
-### User Interface
-- Submit complaints with images
-- Track complaint status
-- Chat with AI assistant
-- View complaint history
-
-### Admin Interface
-- Dashboard with analytics
-- Complaint management
-- Department-wise filtering
-- Status updates
-- User management
-
-### AI Features
-- Complaint classification
-- Image relevance verification
-- GPS location extraction
-- Smart chatbot responses
-
-## Security Features
-
-- Secure session management
-- CORS protection
-- Input validation
-- Image verification
+- Secure session management with Flask
+- CORS protection for API endpoints
+- Input validation and sanitization
+- Image verification and validation
 - GPS location validation
+- Secure password handling
+- API key protection
 
-## Contributing
+## 📊 API Endpoints
+
+### User Endpoints
+- `POST /api/submit_complaint` - Submit new complaint
+- `POST /api/track_complaint` - Track complaint status
+- `POST /api/chat` - Interact with AI chatbot
+
+### Admin Endpoints
+- `POST /api/admin/login` - Admin authentication
+- `GET /api/admin/complaints` - Get all complaints
+- `POST /api/admin/update_status` - Update complaint status
+- `GET /api/admin/reports` - Get analytics data
+- `GET /api/admin/departments` - Get department list
+
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## License
+## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Support
+## 🆘 Support
 
-For support, please open an issue in the repository or contact the maintainers. 
+For support:
+- Open an issue in the repository
+- Contact the maintainers
+- Check the documentation
+
+## 🙏 Acknowledgments
+
+- Google Gemini AI for chatbot capabilities
+- CLIP team for image verification
+- Flask team for the web framework
+- All contributors and maintainers 

@@ -5,10 +5,13 @@ import base64
 import os
 import uuid
 import json
+from datetime import datetime
+import requests
 from PIL import Image
 import io
 import clip
 import torch
+from transformers import CLIPProcessor, CLIPModel
 import traceback
 import google.generativeai as genai
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -107,14 +110,20 @@ def init_db():
     
     # Insert default departments
     departments = [
-        "Electrical", 
-        "IT", 
-        "Maintenance", 
-        "Civil", 
-        "Security", 
-        "HR", 
-        "Finance", 
-        "Administration"
+        "Administration",
+        "Civil",
+        "Education",
+        "Electrical",
+        "Finance",
+        "Health & Sanitation",
+        "HR",
+        "IT",
+        "Maintenance",
+        "Public Safety",
+        "Road & Transport",
+        "Security",
+        "Waste Management",
+        "Water"
     ]
     
     for dept in departments:
@@ -181,6 +190,15 @@ def extract_location_from_image(image_data):
             print(f"Error converting coordinates: {str(e)}")
             return None
 
+    def reverse_geocode(lat, lon):
+        try:
+            geolocator = Nominatim(user_agent="geoapi")
+            location = geolocator.reverse((lat, lon), exactly_one=True, timeout=10)
+            return location.address if location else "Address not found."
+        except Exception as e:
+            print(f"Error in reverse geocoding: {str(e)}")
+            return None
+
     try:
         if not image_data:
             return {'error': 'Image is required with GPS data'}
@@ -195,19 +213,14 @@ def extract_location_from_image(image_data):
             
             if latitude is not None and longitude is not None:
                 print(f"GPS coordinates found: {latitude}, {longitude}")
-                try:
-                    geolocator = Nominatim(user_agent="geoapi")
-                    location = geolocator.reverse((latitude, longitude), exactly_one=True, timeout=10)
-                    address = location.address if location else None
-                    if not address:
-                        return {'error': 'Could not extract address from GPS coordinates'}
-                    return {
-                        'latitude': latitude,
-                        'longitude': longitude,
-                        'address': address
-                    }
-                except Exception as e:
-                    return {'error': 'Failed to get address from coordinates'}
+                address = reverse_geocode(latitude, longitude)
+                if not address:
+                    return {'error': 'Could not extract address from GPS coordinates'}
+                return {
+                    'latitude': latitude,
+                    'longitude': longitude,
+                    'address': address
+                }
             else:
                 return {'error': 'No GPS data found in image. Please submit an image with GPS location data.'}
 
@@ -261,7 +274,7 @@ def classify_complaint(complaint_text):
     First determine if this is a valid complaint about government services/infrastructure with a confidence threshold of 0.7.
     If not confident or not a clear government service complaint, respond with "out_of_scope".
     
-    If it is a valid complaint, classify it into one of these departments:
+    If it is a valid complaint, which are related to one of these departments below, classify it into one of the following departments:
     Administration, Civil, Education, Electrical, Finance, Health & Sanitation,
     HR, IT, Maintenance, Public Safety, Road & Transport, Security, Waste Management, Water
 
@@ -459,23 +472,36 @@ def admin_login():
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor(dictionary=True)
 
-    # Validate admin credentials
-    cursor.execute("""
-        SELECT a.id, a.username, a.department_id, d.name AS department_name
-        FROM admins a
-        LEFT JOIN departments d ON a.department_id = d.id
-        WHERE a.username = %s AND a.password = %s
-    """, (username, password))
-    admin = cursor.fetchone()
+    try:
+        # Modified query to get department details
+        cursor.execute("""
+            SELECT a.id, a.username, a.department_id, d.name AS department_name
+            FROM admins a
+            LEFT JOIN departments d ON a.department_id = d.id
+            WHERE a.username = %s AND a.password = %s
+        """, (username, password))
+        
+        admin = cursor.fetchone()
 
-    if admin:
-        session['admin_id'] = admin['id']
-        session['admin_username'] = admin['username']
-        session['department_name'] = admin['department_name']  # Store department name in the session
-        session.permanent = True  # Make the session persistent
-        return jsonify({"success": True, "message": "Login successful"})
-    else:
-        return jsonify({"success": False, "message": "Invalid credentials"}), 401
+        if admin:
+            session['admin_id'] = admin['id']
+            session['admin_username'] = admin['username']
+            session['department_id'] = admin['department_id']
+            session['department_name'] = admin['department_name']
+            session.permanent = True
+            
+            return jsonify({
+                "success": True, 
+                "message": "Login successful",
+                "username": admin['username'],
+                "department_name": admin['department_name']
+            })
+        else:
+            return jsonify({"success": False, "message": "Invalid credentials"}), 401
+            
+    finally:
+        cursor.close()
+        conn.close()
 
 # Route to get all complaints for admin
 @app.route('/api/admin/complaints', methods=['GET'])
@@ -662,15 +688,27 @@ def chat_with_llm():
         {{
             "type": "complaint",
             "department": "[appropriate department]",
-            "reply": "[your response asking for more details]"
+            "reply": "[your response asking for filling the form given below by the UI,
+            just state him to fill it in the description]"
         }}
         
-        For general queries or chat, respond with:
+        If this is not a complaint in the scope of government services, respond with:
+        {{
+            "type": "out_of_scope",
+            "reply": "[your response indicating it's out of scope]"
+        }}
+
+        For general queries or chat that are only greetings, farewell messages, respond with:
         {{
             "type": "casual",
             "reply": "[your helpful response]"
         }}
         
+        For queries other than these, respond with:
+        {{
+            "type": "casual",
+            "reply": "[your response indicating to ask only related to complaints/queries of government services]"
+        }}
         Ensure your response is always in valid JSON format."""
 
         response = model.generate_content(analysis_prompt)
@@ -765,30 +803,14 @@ def get_reports():
 
 @app.route('/api/admin/session', methods=['GET'])
 def validate_admin_session():
-    if 'admin_id' in session:
-        # Get admin info from database
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor(dictionary=True)
+    if 'admin_id' not in session:
+        return jsonify({"success": False, "message": "No active session"})
         
-        cursor.execute("""
-            SELECT a.username, d.name as department_name 
-            FROM admins a 
-            LEFT JOIN departments d ON a.department_id = d.id 
-            WHERE a.id = %s
-        """, (session['admin_id'],))
-        
-        admin = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "success": True,
-            "admin_id": session['admin_id'],
-            "admin_username": admin['username'],
-            "department_name": admin['department_name']
-        })
-    else:
-        return jsonify({"success": False, "message": "Admin session is not active"})
+    return jsonify({
+        "success": True,
+        "admin_username": session['admin_username'],
+        "department_name": session['department_name']
+    })
 
 @app.route('/api/admin/logout', methods=['POST'])
 def admin_logout():

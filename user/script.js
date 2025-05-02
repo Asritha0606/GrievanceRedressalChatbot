@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Add initial bot message
-    addMessage("Hello! I'm here to help you submit your grievance. Please tell me about your issue, and I'll make sure it gets to the right department.");
+    addMessage("Hello! I'm Grieve Buddy, here to help you submit your grievance. Please tell me about your issue, and I'll make sure it gets to the right department.");
 
     async function handleUserInput() {
         const message = userInput.value.trim();
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
         sendBtn.disabled = true;
         
         // Add loading indicator
-        const loadingMessage = addMessage("Typing...", false);
+        const loadingMessage = addMessage("Typing", false);
         loadingMessage.classList.add('bot-typing');
         
         try {
@@ -103,9 +103,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 if (result.type === 'complaint') {
                     // Add a small delay before showing follow-up messages
-                    setTimeout(() => {
-                        addMessage(`To ensure we capture all the necessary details and get this resolved efficiently, could you please fill out the form below?`);
-                        
+                    setTimeout(() => {                        
                         // Show form with smooth animation
                         complaintForm.style.display = 'block';
                         requestAnimationFrame(() => {
@@ -249,7 +247,17 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             const result = await response.json();
-            console.log(result);
+            if (!response.ok) {
+                // Handle specific error messages from backend
+                if (result.message.includes('GPS')) {
+                    showNotification('Please submit an image with GPS data. Use photos taken directly from camera.', 'error');
+                } else if (result.message.includes('Irrelevant image')) {
+                    showNotification(result.message, 'error');
+                } else {
+                    showNotification(result.message || 'Failed to submit complaint', 'error');
+                }
+                return;
+            }
 
             if (result.success) {
                 // Update the ticket number and department in the UI
@@ -480,6 +488,17 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
+
+    // Add enter key listener for tracking
+    const trackTicketInput = document.getElementById('track-ticket');
+    if (trackTicketInput) {
+        trackTicketInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('track-btn').click();
+            }
+        });
+    }
 });
 
 

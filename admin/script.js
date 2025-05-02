@@ -12,6 +12,19 @@ document.getElementById('modal-image').addEventListener('click', function() {
     fullscreenModal.style.display = 'block';
 });
 
+document.addEventListener('DOMContentLoaded', function() {
+    // Add enter key listener for login
+    const passwordInput = document.getElementById('password');
+    if (passwordInput) {
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleLogin();
+            }
+        });
+    }
+});
+
 function initializeApp() {
     // Set up event listeners
     setupEventListeners();
@@ -88,7 +101,6 @@ function setupChartDefaults() {
 async function handleLogin() {
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
-    const loginError = document.getElementById('login-error');
 
     if (!username || !password) {
         showError('Please enter both username and password');
@@ -108,7 +120,10 @@ async function handleLogin() {
         const data = await response.json();
 
         if (data.success) {
-            // Animate transition
+            // Update admin info with department name
+            document.getElementById('admin-username').textContent = data.username;
+            document.getElementById('admin-department').textContent = data.department_name || 'No Department';
+
             const loginSection = document.getElementById('login-section');
             const dashboardSection = document.getElementById('dashboard-section');
 
@@ -117,8 +132,6 @@ async function handleLogin() {
                 loginSection.style.display = 'none';
                 dashboardSection.style.display = 'block';
                 dashboardSection.classList.add('fade-in');
-                
-                // Load initial data
                 loadDashboardData();
             }, 300);
         } else {

@@ -884,6 +884,11 @@ body {
     border-radius: 8px; /* Rounded corners */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow */
     color: white; /* Set text color to white for contrast */
+    display: none;  /* Hide all sections by default */
+}
+
+.dashboard-section.active {
+    display: block;  /* Show only active section */
 }
 
 /* Styles for the section header */
