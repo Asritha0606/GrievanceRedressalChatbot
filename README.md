@@ -1,24 +1,24 @@
 # Grievance Redressal Chatbot
 
-A comprehensive grievance redressal system with AI-powered chatbot support, image verification, and GPS location tracking. This system helps citizens submit and track their complaints about government services efficiently.
+A comprehensive grievance redressal system with AI-powered chatbot support, image verification, and GPS location tracking. This system helps citizens submit and track their complaints about government services efficiently. The project streamlines entire process.
 
 ## 🌟 Key Features
 
 ### For Citizens
-- 🤖 AI-powered chatbot for initial complaint assessment and guidance
-- 📸 Image upload with GPS location verification
-- 🔍 Smart image relevance verification using CLIP
-- 📱 Real-time complaint status tracking
-- 💬 Interactive chat interface for complaint submission
-- 📍 Automatic location detection from images
+- 🤖 Intelligent AI-powered chatbot for automated complaint assessment and guidance
+- 📸 Secure image upload with integrated GPS location verification
+- 🔍 Advanced image relevance verification using CLIP technology
+- 📱 Comprehensive real-time complaint status monitoring
+- 💬 Intuitive chat interface for streamlined complaint submission
+- 📍 Automated location detection and validation from image metadata
 
 ### For Administrators
-- 📊 Comprehensive admin dashboard
-- 📈 Real-time analytics and reporting
-- 🔍 Advanced complaint filtering and search
-- 👥 Department-wise complaint management
-- 📱 Responsive admin interface
-- 📊 Visual analytics with charts and graphs
+- 📊 Enterprise-grade administrative dashboard
+- 📈 Advanced analytics and real-time reporting capabilities
+- 🔍 Sophisticated complaint filtering and search functionality
+- 👥 Department-specific complaint management system
+- 📱 Cross-platform responsive administrative interface
+- 📊 Interactive data visualization and analytics dashboard
 
 ## 🛠️ Tech Stack
 
@@ -43,9 +43,9 @@ A comprehensive grievance redressal system with AI-powered chatbot support, imag
 
 - Python 3.8 or higher
 - MySQL Server 8.0 or higher
-- Google Cloud API Key (for Gemini AI)
-- Modern web browser with JavaScript enabled
-- Git (for version control)
+- Google Cloud API Key (for Gemini AI integration)
+- Modern web browser with JavaScript support
+- Git version control system
 
 ## 🚀 Installation
 
@@ -116,18 +116,18 @@ python backendflask.py
 
 ```
 GrievanceRedressalChatbot/
-├── backendflask.py          # Main Flask application
-├── requirements.txt         # Python dependencies
-├── .env                     # Environment variables
-├── uploads/                 # Uploaded complaint images
-├── user/                    # User interface
-│   ├── index.html          # Main user page
-│   ├── styles.css          # User styles
+├── backendflask.py          # Core application logic
+├── requirements.txt         # System dependencies
+├── .env                     # Environment configuration
+├── uploads/                 # Secure image storage
+├── user/                    # User interface components
+│   ├── index.html          # Primary user interface
+│   ├── styles.css          # User interface styling
 │   └── script.js           # User interface logic
-└── admin/                   # Admin interface
-    ├── index.html          # Admin dashboard
-    ├── styles.css          # Admin styles
-    └── script.js           # Admin interface logic
+└── admin/                   # Administrative interface
+    ├── index.html          # Administrative dashboard
+    ├── styles.css          # Administrative styling
+    └── script.js           # Administrative logic
 ```
 
 ## 🔒 Security Features
@@ -154,7 +154,35 @@ GrievanceRedressalChatbot/
 - `GET /api/admin/reports` - Get analytics data
 - `GET /api/admin/departments` - Get department list
 
-## 🤝 Contributing
+## 📸 System Interface
+
+### User Interface
+![User Chat Interface](screenshots/user-chat.png)
+*AI Chatbot interface for submitting complaints*
+
+![Complaint Form](screenshots/complaint-form.png)
+*Complaint submission form with image upload*
+
+![Track Complaint](screenshots/track-complaint.png)
+*Complaint tracking interface showing status and details*
+
+### Admin Interface
+![Admin Dashboard](screenshots/admin-login.png)
+*Administration login*
+
+![Complaints view](screenshots/complaint-view.png)
+*Detailed complaint management interface*
+
+![Complaints Management](screenshots/complaints-list.png)
+*Complaints list with filtering and status management*
+
+![Department View](screenshots/department-view.png)
+*Department-wise complaint management*
+
+![Analytics](screenshots/analytics.png)
+*Statistical reports and charts*
+
+## 🤝 Contribution Guidelines
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
@@ -166,7 +194,7 @@ GrievanceRedressalChatbot/
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## 🆘 Technical Support
 
 For support:
 - Open an issue in the repository
@@ -178,4 +206,4 @@ For support:
 - Google Gemini AI for chatbot capabilities
 - CLIP team for image verification
 - Flask team for the web framework
-- All contributors and maintainers 
+- All the contributors of project
